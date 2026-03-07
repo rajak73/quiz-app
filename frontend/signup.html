@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Quiz</title>
+    <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <!-- Logo Section -->
+            <div class="auth-logo">
+                <span class="logo-icon">🎓</span>
+                <h1>Create Account</h1>
+                <p>Join Quiz today!</p>
+            </div>
+
+            <!-- Signup Form -->
+            <form id="signupForm" onsubmit="handleSignup(event)">
+                <!-- Full Name -->
+                <div class="form-group" id="nameGroup">
+                    <label>Full Name</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            class="form-input" 
+                            id="name" 
+                            placeholder="Enter your full name"
+                            required
+                        >
+                        <span class="input-icon">👤</span>
+                    </div>
+                    <span class="error-message" id="nameError"></span>
+                </div>
+
+                <!-- Email -->
+                <div class="form-group" id="emailGroup">
+                    <label>Email Address</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="email" 
+                            class="form-input" 
+                            id="email" 
+                            placeholder="Enter your email"
+                            required
+                        >
+                        <span class="input-icon">📧</span>
+                    </div>
+                    <span class="error-message" id="emailError"></span>
+                </div>
+
+                <!-- Password -->
+                <div class="form-group" id="passwordGroup">
+                    <label>Password</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="password" 
+                            class="form-input" 
+                            id="password" 
+                            placeholder="Create a strong password"
+                            required
+                            oninput="checkPasswordStrength()"
+                        >
+                        <span class="input-icon">🔒</span>
+                        <button type="button" class="password-toggle" onclick="togglePassword('password')">
+                            👁️
+                        </button>
+                    </div>
+                    <div class="password-strength">
+                        <div class="strength-bar">
+                            <div class="strength-fill" id="strengthFill"></div>
+                        </div>
+                        <span class="strength-text" id="strengthText"></span>
+                    </div>
+                    <span class="error-message" id="passwordError"></span>
+                </div>
+
+                <!-- Confirm Password -->
+                <div class="form-group" id="confirmPasswordGroup">
+                    <label>Confirm Password</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="password" 
+                            class="form-input" 
+                            id="confirmPassword" 
+                            placeholder="Confirm your password"
+                            required
+                        >
+                        <span class="input-icon">🔒</span>
+                        <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">
+                            👁️
+                        </button>
+                    </div>
+                    <span class="error-message" id="confirmPasswordError"></span>
+                </div>
+
+                <!-- Terms -->
+                <div class="form-group">
+                    <label class="remember-me" style="font-size: 13px; text-transform: none; letter-spacing: 0;">
+                        <input type="checkbox" id="terms" required>
+                        <span>I agree to the <a href="#" style="color: #667eea;">Terms & Conditions</a></span>
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn-submit btn-success" id="submitBtn">
+                    <span id="btnText">Create Account</span>
+                    <span class="spinner" id="spinner" style="display: none;"></span>
+                </button>
+            </form>
+
+            <!-- Divider -->
+            <div class="divider">
+                <span>OR</span>
+            </div>
+
+            <!-- Social Signup -->
+            <div class="social-buttons">
+                <button type="button" class="btn-social" onclick="googleSignup()">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                    Sign up with Google
+                </button>
+            </div>
+
+            <!-- Footer -->
+            <div class="auth-footer">
+                Already have an account? <a href="login.html">Login</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // SIGNUP PAGE - JAVASCRIPT FUNCTIONS
+        // ============================================
+
+        // API Base URL - Automatically detects local vs production
+        const API_BASE_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:5000/api' 
+            : 'https://quiz-app-backend.onrender.com/api'; // Update this with your Render URL
+
+        // 1. Toggle Password Visibility
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggle = input.parentElement.querySelector('.password-toggle');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                toggle.textContent = '👁️';
+            }
+        }
+
+        // 2. Check Password Strength
+        function checkPasswordStrength() {
+            const password = document.getElementById('password').value;
+            const fill = document.getElementById('strengthFill');
+            const text = document.getElementById('strengthText');
+            
+            let strength = 0;
+            let strengthLabel = '';
+
+            // Length check
+            if (password.length >= 6) strength++;
+            if (password.length >= 10) strength++;
+
+            // Character checks
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^a-zA-Z0-9]/.test(password)) strength++;
+
+            // Remove all classes
+            fill.classList.remove('weak', 'medium', 'strong');
+
+            if (strength <= 2) {
+                fill.classList.add('weak');
+                strengthLabel = 'Weak - Add numbers & symbols';
+            } else if (strength <= 4) {
+                fill.classList.add('medium');
+                strengthLabel = 'Medium - Add uppercase & symbols';
+            } else {
+                fill.classList.add('strong');
+                strengthLabel = 'Strong password! ✓';
+            }
+
+            text.textContent = password ? strengthLabel : '';
+        }
+
+        // 3. Show Toast
+        function showToast(message, type = 'info') {
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) existingToast.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // 4. Validate Email
+        function validateEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return regex.test(email);
+        }
+
+        // 5. Show Error
+        function showError(groupId, message) {
+            const group = document.getElementById(groupId);
+            const errorSpan = group.querySelector('.error-message');
+            group.classList.add('error');
+            errorSpan.textContent = message;
+        }
+
+        // 6. Clear Error
+        function clearError(groupId) {
+            const group = document.getElementById(groupId);
+            group.classList.remove('error');
+        }
+
+        // 7. Set Loading State
+        function setLoading(isLoading) {
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('spinner');
+
+            btn.disabled = isLoading;
+            btnText.textContent = isLoading ? 'Creating Account...' : 'Create Account';
+            spinner.style.display = isLoading ? 'inline-block' : 'none';
+        }
+
+        // 8. Handle Signup Submit (DEBUGGED)
+async function handleSignup(e) {
+    e.preventDefault();
+    
+    // Clear previous errors
+    ['nameGroup', 'emailGroup', 'passwordGroup', 'confirmPasswordGroup'].forEach(clearError);
+
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const terms = document.getElementById('terms').checked;
+
+    let hasError = false;
+
+    // Name validation
+    if (name.length < 2) {
+        showError('nameGroup', 'Name must be at least 2 characters');
+        hasError = true;
+    }
+
+    // Email validation
+    if (!validateEmail(email)) {
+        showError('emailGroup', 'Please enter a valid email address');
+        hasError = true;
+    }
+
+    // Password validation (Backend expects min 6 chars)
+    if (password.length < 6) {
+        showError('passwordGroup', 'Password must be at least 6 characters');
+        hasError = true;
+    }
+
+    // Confirm password validation
+    if (password !== confirmPassword) {
+        showError('confirmPasswordGroup', 'Passwords do not match');
+        hasError = true;
+    }
+
+    if (!terms) {
+        showToast('Please accept the Terms & Conditions', 'error');
+        hasError = true;
+    }
+
+    if (hasError) return;
+
+    setLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            // ✅ Ensures cross-origin cookies work if enabled in backend
+            credentials: 'include', 
+            body: JSON.stringify({ name, email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            // Check specifically for duplicate email
+            if (response.status === 400 && (data.message.includes('registered') || data.message.includes('exists'))) {
+                showError('emailGroup', 'This email is already in use');
+            }
+            throw new Error(data.message || 'Signup failed');
+        }
+
+        // Success - Backend sends a 201 or 200 (if resending OTP)
+        showToast(data.message || 'Account created! Check your email.', 'success');
+
+        // Store data for the verification page
+        sessionStorage.setItem('pendingVerification', email);
+        sessionStorage.setItem('userName', name);
+
+        setTimeout(() => {
+            window.location.href = 'verify-email.html';
+        }, 1500);
+
+    } catch (error) {
+        console.error('Signup error:', error);
+        showToast(error.message, 'error');
+    } finally {
+        setLoading(false);
+    }
+}
+        // 9. Google Signup
+        function googleSignup() {
+            showToast('Google signup coming soon!', 'info');
+        }
+
+        // 10. Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Clear errors on input
+            document.getElementById('name').addEventListener('input', () => clearError('nameGroup'));
+            document.getElementById('email').addEventListener('input', () => clearError('emailGroup'));
+            document.getElementById('password').addEventListener('input', () => clearError('passwordGroup'));
+            document.getElementById('confirmPassword').addEventListener('input', () => clearError('confirmPasswordGroup'));
+        });
+    </script>
+</body>
+</html>

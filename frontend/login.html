@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Quiz</title>
+    <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <!-- Logo Section -->
+            <div class="auth-logo">
+                <span class="logo-icon">🎓</span>
+                <h1>Quiz</h1>
+                <p>Welcome back! Please login to continue</p>
+            </div>
+
+            <!-- Login Form -->
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <!-- Email -->
+                <div class="form-group" id="emailGroup">
+                    <label>Email Address</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="email" 
+                            class="form-input" 
+                            id="email" 
+                            placeholder="Enter your email"
+                            required
+                        >
+                        <span class="input-icon">📧</span>
+                    </div>
+                    <span class="error-message" id="emailError"></span>
+                </div>
+
+                <!-- Password -->
+                <div class="form-group" id="passwordGroup">
+                    <label>Password</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="password" 
+                            class="form-input" 
+                            id="password" 
+                            placeholder="Enter your password"
+                            required
+                        >
+                        <span class="input-icon">🔒</span>
+                        <button type="button" class="password-toggle" onclick="togglePassword('password')">
+                            👁️
+                        </button>
+                    </div>
+                    <span class="error-message" id="passwordError"></span>
+                </div>
+
+                <!-- Options -->
+                <div class="form-options">
+                    <label class="remember-me">
+                        <input type="checkbox" id="rememberMe">
+                        <span>Remember me</span>
+                    </label>
+                    <a href="forgot-password.html" class="forgot-link">Forgot Password?</a>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn-submit" id="submitBtn">
+                    <span id="btnText">Login</span>
+                    <span class="spinner" id="spinner" style="display: none;"></span>
+                </button>
+            </form>
+
+            <!-- Divider -->
+            <div class="divider">
+                <span>OR</span>
+            </div>
+
+            <!-- Social Login -->
+            <div class="social-buttons">
+                <button type="button" class="btn-social" onclick="googleLogin()">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                    Continue with Google
+                </button>
+            </div>
+
+            <!-- Footer -->
+            <div class="auth-footer">
+                Don't have an account? <a href="signup.html">Sign Up</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // LOGIN PAGE - JAVASCRIPT FUNCTIONS
+        // ============================================
+
+        // 1. API Base URL - Automatically detects local vs production
+        const API_BASE_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:5000/api' 
+            : 'https://quiz-app-backend.onrender.com/api'; // Update this with your Render URL
+
+        // 2. Toggle Password Visibility
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggle = input.parentElement.querySelector('.password-toggle');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                toggle.textContent = '👁️';
+            }
+        }
+
+        // 3. Show Toast Notification
+        function showToast(message, type = 'info') {
+            // Remove existing toasts
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) existingToast.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // 4. Validate Email Format
+        function validateEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return regex.test(email);
+        }
+
+        // 5. Show Field Error
+        function showError(groupId, message) {
+            const group = document.getElementById(groupId);
+            const errorSpan = group.querySelector('.error-message');
+            group.classList.add('error');
+            errorSpan.textContent = message;
+        }
+
+        // 6. Clear Field Error
+        function clearError(groupId) {
+            const group = document.getElementById(groupId);
+            group.classList.remove('error');
+        }
+
+        // 7. Set Loading State
+        function setLoading(isLoading) {
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('spinner');
+
+            btn.disabled = isLoading;
+            btnText.textContent = isLoading ? 'Logging in...' : 'Login';
+            spinner.style.display = isLoading ? 'inline-block' : 'none';
+        }
+
+        // 8. Handle Login Form Submit (DEBUGGED)
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    clearError('emailGroup');
+    clearError('passwordGroup');
+
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const rememberMe = document.getElementById('rememberMe').checked;
+
+    // ... (Keep your validation logic here) ...
+
+    setLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            // ✅ CRITICAL: Required because backend uses credentials/cookies
+            credentials: 'include', 
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            // ✅ Handle unverified users using the backend flag
+            if (data.requiresVerification) {
+                showToast(data.message, 'error');
+                sessionStorage.setItem('pendingVerification', email);
+                setTimeout(() => {
+                    window.location.href = 'verify-email.html';
+                }, 2000);
+                return;
+            }
+            throw new Error(data.message || 'Login failed');
+        }
+
+        // Success
+        showToast('Login successful! Redirecting...', 'success');
+
+        // Store user info (Token is already in HttpOnly cookie)
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem('user', JSON.stringify(data.user));
+        storage.setItem('token', data.token); // Optional backup
+
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 1500);
+
+    } catch (error) {
+        if (error.message.includes('Invalid credentials')) {
+            showError('passwordGroup', 'Invalid email or password');
+        } else {
+            showToast(error.message, 'error');
+        }
+    } finally {
+        setLoading(false);
+    }
+}
+
+        // 9. Google Login
+        async function googleLogin() {
+            showToast('Google login coming soon!', 'info');
+            // Implement Google OAuth here
+            // window.location.href = `${API_BASE_URL}/auth/google`;
+        }
+
+        // 10. Check if Already Logged In
+        function checkAuth() {
+            const token = localStorage.getItem('token');
+            const sessionToken = sessionStorage.getItem('token');
+            
+            const hasValidToken = (token && token !== 'null' && token !== 'undefined' && token.trim() !== '') ||
+                                  (sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined' && sessionToken.trim() !== '');
+            
+            // Only redirect if token exists and is valid
+            if (hasValidToken) {
+                window.location.replace('index.html');
+            }
+        }
+
+        // 11. Initialize - Check auth immediately, not waiting for DOMContentLoaded
+        checkAuth();
+        
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // Clear errors on input
+            document.getElementById('email').addEventListener('input', () => clearError('emailGroup'));
+            document.getElementById('password').addEventListener('input', () => clearError('passwordGroup'));
+
+            // Enter key to submit
+            document.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quiz</title>
+    <h1 id="app-title">My Quiz</h1>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* 1. Global Styles & Setup */
+        :root {
+            /* OLED MODE DEFAULT (Pitch Black) */
+            --dark-bg: #000000;
+            --light-text: #E0E0E0;
+            --darker-bg: #121212;
+            --border-color: #333;
+            --btn-red: linear-gradient(135deg, #ff5f6d, #ffc371);
+            --btn-green: linear-gradient(135deg, #11998e, #38ef7d);
+            --btn-blue: linear-gradient(135deg, #2193b0, #6dd5ed);
+            --btn-action: linear-gradient(135deg, #8e2de2, #4a00e0);
+            --btn-text: #ffffff;
+            --highlight-bg: #222;
+            --btn-yellow: linear-gradient(135deg, #fce38a, #f38181);
+            --btn-orange: linear-gradient(135deg, #ff9966, #ff5e62);
+            --btn-light: #D3D3D3;
+            --fab-item-bg: #333;
+            --toggle-off-color: #f87171;
+            --selection-bg: rgba(98, 0, 238, 0.4);
+            --answer-color: #4caf50;
+            --note-bg: #4d4d3c;
+            --note-text: #f0f0c5;
+            --glass-bg: rgba(20, 20, 20, 0.9);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --table-border: #444;
+            --progress-track: #333;
+            --progress-fill: linear-gradient(90deg, #38ef7d, #2193b0);
+            --explanation-bg: #1a1a2e;
+            --explanation-border: #4a00e0;
+            
+            --main-font: "Times New Roman", serif;
+            --main-font-size: 1rem;
+            --rr-font-size: 1rem;
+            --quiz-font-size: 1rem;
+            --main-font-weight: normal;
+
+            --g-fab-bg: radial-gradient(circle at 30% 30%, #4facfe, #00f2fe);
+            --g-fab-border: 1px solid rgba(255, 255, 255, 0.6);
+            --g-fab-shadow: 0 10px 20px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        button, .q-nav-box, .rr-zoom-btn, #prev-q-btn, #next-q-btn {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body.light-mode {
+            --dark-bg: #f4f4f5;
+            --light-text: #18181b;
+            --darker-bg: #ffffff;
+            --border-color: #d4d4d8;
+            --btn-red: linear-gradient(135deg, #ef4444, #f87171);
+            --btn-green: linear-gradient(135deg, #22c55e, #86efac);
+            --btn-blue: linear-gradient(135deg, #3b82f6, #93c5fd);
+            --btn-action: linear-gradient(135deg, #8b5cf6, #c4b5fd);
+            --btn-text: #ffffff; 
+            --highlight-bg: #e4e4e7;
+            --btn-yellow: linear-gradient(135deg, #fbbf24, #fcd34d);
+            --btn-orange: linear-gradient(135deg, #f97316, #fdba74);
+            --btn-light: #e4e4e7;
+            --fab-item-bg: #e6e0f3;
+            --toggle-off-color: #fecaca;
+            --selection-bg: rgba(124, 58, 237, 0.3);
+            --answer-color: #16a34a;
+            --note-bg: #fffbdd;
+            --note-text: #504c1c;
+            --glass-bg: rgba(255, 255, 255, 0.9);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --table-border: #ccc;
+            --progress-track: #e5e7eb;
+            --progress-fill: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            --explanation-bg: #eff6ff;
+            --explanation-border: #3b82f6;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            font-family: var(--main-font);
+            font-size: var(--main-font-size);
+            font-weight: var(--main-font-weight);
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s, font-size 0.2s;
+            overflow-x: hidden;
+        }
+        
+        .hidden { display: none !important; }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .page { padding: 20px; max-width: 98%; margin: 0 auto; min-height: 100vh; position: relative; z-index: 1; }
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 10px; overflow-y: auto; }
+        .popup-content { background: var(--darker-bg); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); width: 95%; max-width: 550px; text-align: center; position: relative; }
+        .popup-content-full { background: var(--dark-bg); width: 100%; height: 100%; padding: 20px; border-radius: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s; margin: 5px; color: var(--btn-text); }
+        .btn-red { background: var(--btn-red); }
+        .btn-green { background: var(--btn-green); }
+        .btn-blue { background: var(--btn-blue); }
+        .btn-action { background: var(--btn-action); }
+
+        #home-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card { background: var(--darker-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 5px; text-align: center; }
+        .stat-number { font-size: 1.5rem; font-weight: bold; color: var(--btn-blue); }
+
+        /* G-BUTTON STYLES */
+        #g-control-center-fab {
+            position: fixed; top: calc(50% - 32px); left: calc(100% - 32px);
+            width: 65px; height: 65px; background: var(--g-fab-bg); border: var(--g-fab-border);
+            box-shadow: var(--g-fab-shadow); border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; color: #002244;
+            font-size: 2.8rem; font-family: 'Garamond', serif; font-weight: 900;
+            font-style: italic; cursor: pointer; z-index: 9999 !important;
+        }
+
+        #g-menu-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.9); z-index: 2000; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        #g-menu-overlay.visible { opacity: 1; pointer-events: auto; }
+        .g-menu-content { width: 100%; max-width: 450px; background: var(--darker-bg); padding: 30px; border-radius: 20px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 15px; }
+
+        .quiz-navigation { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 15px 0; }
+        .quiz-navigation button { background: var(--darker-bg); border: 1px solid var(--border-color); height: 50px; border-radius: 10px; font-size: 1.4rem; color: var(--light-text); }
+
+        /* AI CHAT STYLES */
+        #ai-result-popup .popup-content-full { border: 4px solid #00E676 !important; background: #000; }
+        .chat-bubble { max-width: 85%; padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; }
+        .chat-user { align-self: flex-end; background: #333; color: #fff; }
+        .chat-ai { align-self: flex-start; background: #0d1f12; border: 1px solid #00E676; color: #e0e0e0; }
+
+        /* Floating Theme Toggle */
+        #floating-theme-toggle { position: fixed; top: 20px; left: 20px; z-index: 1001; }
+        .theme-toggle { display: flex; align-items: center; justify-content: space-around; width: 70px; height: 34px; background: var(--darker-bg); border-radius: 20px; cursor: pointer; position: relative; }
+        .theme-toggle-slider { position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; background: var(--btn-blue); border-radius: 50%; transition: 0.3s; }
+        body.light-mode .theme-toggle-slider { transform: translateX(36px); }
+
+        /* Navigator */
+        #q-navigator { display: flex; overflow-x: auto; padding-bottom: 10px; }
+        .q-nav-box { min-width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); border-radius: 12px; margin: 0 5px; cursor: pointer; }
+        .q-nav-box.current { border: 2px solid #6200EE; transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <script>
+        (function() {
+            const token = localStorage.getItem("token");
+            if (!token) {
+                window.location.href = "login.html";
+            }
+        })();
+    </script>
+
+    <canvas id="confetti-canvas" style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999; display:none;"></canvas>
+
+    <div id="g-control-center-fab">G</div>
+
+    <div id="g-menu-overlay" class="hidden">
+        <div class="g-menu-content">
+            <div style="text-align: center; font-size: 1.8rem; font-weight: bold; padding: 15px; background: linear-gradient(45deg, #FF512F, #DD2476); color: #fff; border-radius: 12px; margin-bottom: 10px;">Control Center</div>
+            <button class="btn btn-action" onclick="logout()" style="background: red;">Logout 🚪</button>
+            <button class="btn btn-blue" id="g-menu-library-btn">My Library 🏛️</button>
+            <button class="btn btn-blue" id="g-menu-reports-btn">My Reports 📊</button>
+            <button class="btn btn-blue" id="g-menu-revision-btn">Quick Revision ⚡</button>
+            <button class="btn btn-blue" id="g-menu-weakness-btn">Weakness Practice 🔥</button>
+            <button class="btn btn-secondary" id="g-menu-settings-btn">Settings ⚙️</button>
+            <button id="g-menu-close-btn" class="btn btn-red">Close Menu ❌</button>
+        </div>
+    </div>
+
+    <div id="floating-theme-toggle" class="theme-toggle">
+        <div class="theme-toggle-icon">🌙</div>
+        <div class="theme-toggle-icon">☀️</div>
+        <div class="theme-toggle-slider"></div>
+    </div>
+    
+    <div id="home-page" class="page">
+        <div class="top-bar" style="text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 20px;">
+            <h1 id="welcome-title">My Quiz</h1>
+            <div class="top-actions">
+                <button class="btn btn-secondary" id="view-sheets-btn">View Sheets</button>
+                <button class="btn btn-light" id="universal-search-btn">🔍 Search</button>
+            </div>
+        </div>
+
+        <div class="setup-section">
+            <h4 style="margin-bottom: 10px; color: #6dd5ed;">Choose Your Subject:</h4>
+            <div id="subject-selection-grid" style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;"></div>
+        </div>
+
+        <div id="main-content-area" class="hidden">
+            <div id="home-stats" class="glass-panel">
+                <div class="stat-card"><span class="stat-number" id="stat-total-tests">0</span><br><span style="font-size:0.8rem">Tests</span></div>
+                <div class="stat-card"><span class="stat-number" id="stat-avg-score">0%</span><br><span style="font-size:0.8rem">Avg</span></div>
+                <div class="stat-card"><span class="stat-number" id="stat-total-qs">0</span><br><span style="font-size:0.8rem">Qs</span></div>
+            </div>
+            <div style="text-align:center;"><button class="btn btn-red" id="upload-file-main-btn">Upload File</button></div>
+            <div style="text-align:center; margin-top:20px;"><button class="btn btn-green" id="start-test-btn" style="width: 100%; max-width: 400px; font-size: 1.2rem;">Start Test 🚀</button></div>
+        </div>
+    </div>
+    
+    <div id="read-remember-page" class="page hidden">
+        <div style="padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="rr-universal-search-trigger" placeholder="🔍 Search all questions..." readonly style="flex-grow:1; padding:8px; border-radius:20px; background:var(--darker-bg); color:inherit;">
+            <button class="btn btn-sm btn-blue" id="rr-zoom-in">A+</button>
+            <button class="btn btn-sm btn-blue" id="rr-zoom-out">A-</button>
+        </div>
+        <div id="read-remember-content" style="padding-bottom: 80px;"></div>
+    </div>
+    
+    <div id="quiz-page" class="page hidden">
+        <div class="quiz-header">
+            <div id="q-navigator"></div>
+            <div style="display: flex; justify-content: space-between; padding: 10px;">
+                <span id="timer-up">00:00:00</span>
+                <button id="save-q-btn">🏛️</button>
+                <button id="quiz-pause-btn">⏸️</button>
+            </div>
+        </div>
+        <div class="quiz-body">
+            <div id="question-text-area" class="glass-panel" style="padding: 15px; margin-bottom: 10px; border-radius: 8px;"></div>
+            <div id="quiz-options-area"></div>
+            <div id="quiz-explanation-area" style="display:none; background: #1a1a2e; padding: 10px; border-left: 4px solid #4a00e0; margin-top: 10px;"></div>
+        </div>
+        <div class="quiz-navigation">
+            <button id="prev-q-btn">⏮️</button>
+            <button id="mark-review-btn">✴️</button>
+            <button id="quiz-summary-btn">📊</button>
+            <button id="next-q-btn">⏭️</button>
+        </div>
+    </div>
+
+    <div id="ai-result-popup" class="popup-overlay hidden">
+        <div class="popup-content-full">
+            <div class="ai-chat-header" style="display:flex; justify-content:space-between; padding:15px; border-bottom:1px solid #00E676;">
+                <h3>AI Assistant ✨</h3>
+                <button class="btn btn-red" onclick="showPopup('aiResult', false)">✕</button>
+            </div>
+            <div id="ai-answer-content" style="flex-grow:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:10px;"></div>
+            <div style="padding:15px; display:flex; gap:10px;">
+                <input type="text" id="ai-followup-input" style="flex-grow:1; padding:10px; border-radius:20px;" placeholder="Ask follow up...">
+                <button class="btn btn-green" id="ai-send-btn">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="simple-popup" class="popup-overlay hidden">
+        <div class="popup-content glass-panel" id="simple-popup-content"></div>
+    </div>
+
+    <div id="start-test-options-popup" class="popup-overlay hidden">
+        <div class="popup-content glass-panel">
+            <h3>Configure Quiz</h3>
+            <div style="margin: 20px 0;">
+                <label>Question Count: <input type="number" id="sto-q-count" value="10" style="width:60px;"></label>
+            </div>
+            <button class="btn btn-green" id="sto-start-btn">Start Now 🚀</button>
+            <button class="btn btn-secondary" onclick="showPopup('startTestOptions', false)">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL AUTH & USER LOADING ---
+        async function loadUserAndAuth() {
+            const token = localStorage.getItem("token");
+            if (!token) {
+                window.location.href = "login.html";
+                return;
+            }
+
+            try {
+                const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5001/api' : (window.location.origin + '/api');
+                const res = await fetch(`${API_BASE}/auth/me`, {
+                    method: "GET",
+                    headers: { 
+                        "Authorization": "Bearer " + token,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                if (!res.ok) {
+                    throw new Error("Expired");
+                }
+
+                const data = await res.json();
+                const displayName = (data.user && data.user.name) ? data.user.name : "Quiz";
+                
+                // Update UI elements
+                document.getElementById("app-title").innerText = displayName + "'s Quiz";
+                document.getElementById("welcome-title").innerText = displayName + "'s Quiz";
+                
+                console.log("Logged in as:", displayName);
+
+            } catch (e) {
+                console.error("Session invalid:", e);
+                // Important: Don't remove token if it's just a network error
+                if (e.message === "Expired" || res.status === 401) {
+                    localStorage.removeItem("token");
+                    window.location.href = "login.html";
+                }
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = "login.html";
+        }
+
+        // Run Auth check
+        loadUserAndAuth();
+
+        // --- UI & PAGE LOGIC (Minimal version to ensure compatibility) ---
+        const pages = {
+            home: document.getElementById('home-page'),
+            readRemember: document.getElementById('read-remember-page'),
+            quiz: document.getElementById('quiz-page'),
+        };
+
+        const popups = {
+            aiResult: document.getElementById('ai-result-popup'),
+            simple: document.getElementById('simple-popup'),
+            startTestOptions: document.getElementById('start-test-options-popup')
+        };
+
+        function showPage(pageName) {
+            Object.values(pages).forEach(p => p.classList.add('hidden'));
+            pages[pageName].classList.remove('hidden');
+        }
+
+        function showPopup(popupName, show = true) {
+            if (popups[popupName]) {
+                popups[popupName].classList.toggle('hidden', !show);
+            }
+        }
+
+        // G-FAB Menu Logic
+        const fab = document.getElementById('g-control-center-fab');
+        const menuOverlay = document.getElementById('g-menu-overlay');
+        fab.addEventListener('click', () => {
+            menuOverlay.classList.remove('hidden');
+            setTimeout(() => menuOverlay.classList.add('visible'), 10);
+        });
+        document.getElementById('g-menu-close-btn').addEventListener('click', () => {
+            menuOverlay.classList.remove('visible');
+            setTimeout(() => menuOverlay.classList.add('hidden'), 300);
+        });
+
+        // Theme Toggle
+        document.getElementById('floating-theme-toggle').addEventListener('click', () => {
+            document.body.classList.toggle('light-mode');
+        });
+
+        // Initialize empty state
+        let allQuestionsData = [];
+        let activeSubject = localStorage.getItem('activeSubject') || 'General';
+        
+    </script>
+
+    </body>
+</html>
