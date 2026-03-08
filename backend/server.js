@@ -58,9 +58,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// 4. Serving Static Frontend Files ✅ (This links your 6000 lines of frontend)
-// Assumes structure: /GudduQuiz/backend and /GudduQuiz/frontend
-app.use(express.static(path.join(__dirname, '../frontend'))); 
+// 4. Static files disabled - Frontend hosted on Netlify 
 
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));
@@ -81,9 +79,9 @@ app.use('/api/', globalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/tests', testRoutes);
 
-// ✅ Home Route (Serves your index.html)
+// ✅ Home Route - API Health Check
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    res.json({ success: true, message: 'Quiz App API is running!' });
 });
 
 // ============================================
