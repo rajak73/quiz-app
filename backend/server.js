@@ -83,6 +83,22 @@ app.get('/', (req, res) => {
     res.json({ success: true, message: 'Quiz App API is running!', timestamp: new Date().toISOString() });
 });
 
+// ✅ DB Health Check
+app.get('/api/health', async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+        const state = mongoose.connection.readyState;
+        const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+        res.json({ 
+            success: true, 
+            dbStatus: states[state] || 'unknown',
+            timestamp: new Date().toISOString() 
+        });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
 // ============================================
 // GLOBAL ERROR HANDLER
 // ============================================
