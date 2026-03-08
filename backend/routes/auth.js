@@ -13,7 +13,7 @@ const validator = require('validator');
 // ============================================
 const signupLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5,
+    max: 100, // Increased for testing
     message: { success: false, message: 'Too many signup attempts. Try again after 1 hour.' },
     standardHeaders: true,
     legacyHeaders: false,
