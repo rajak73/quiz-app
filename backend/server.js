@@ -5,7 +5,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
-const path = require('path'); // ✅ Path module essential for serving HTML
 
 // Import configurations
 const connectDB = require('./config/db');
@@ -103,7 +102,9 @@ const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
     app.listen(PORT, () => {
         console.log(`\n🚀 Server Running at: http://localhost:${PORT}`);
-        console.log(`🌍 Mapped Frontend Folder: ${path.join(__dirname, '../frontend')}`);
         console.log(`📡 API Base: http://localhost:${PORT}/api/auth\n`);
     });
+}).catch(err => {
+    console.error('❌ Database connection failed:', err.message);
+    process.exit(1);
 });
