@@ -139,14 +139,13 @@ router.post('/signup', signupLimiter, async (req, res) => {
                     message: 'Email already registered. Please login.'
                 });
             } else {
-                // Resend OTP
-                const otp = existingUser.generateOTP();
+                // Auto-verify existing user
+                existingUser.isVerified = true;
                 await existingUser.save();
-                await sendVerificationEmail(email, existingUser.name, otp);
 
                 return res.status(200).json({
                     success: true,
-                    message: 'Verification code resent. Please check your email.',
+                    message: 'Account verified! Please login.',
                     email
                 });
             }
@@ -281,16 +280,13 @@ router.post('/resend-otp', otpLimiter, async (req, res) => {
             });
         }
 
-        // Generate new OTP
-        const otp = user.generateOTP();
+        // Auto-verify user
+        user.isVerified = true;
         await user.save();
-
-        // Send email
-        await sendVerificationEmail(email, user.name, otp);
 
         res.status(200).json({
             success: true,
-            message: 'Verification code sent!'
+            message: 'Account verified! Please login.'
         });
 
     } catch (error) {
@@ -347,16 +343,9 @@ router.post('/login', loginLimiter, async (req, res) => {
 
         // Check if verified
         if (!user.isVerified) {
-            const otp = user.generateOTP();
+            // Auto-verify user
+            user.isVerified = true;
             await user.save();
-            await sendVerificationEmail(email, user.name, otp);
-
-            return res.status(403).json({
-                success: false,
-                message: 'Email not verified. New verification code sent.',
-                requiresVerification: true,
-                email
-            });
         }
 
         // Check password
