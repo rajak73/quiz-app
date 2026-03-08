@@ -163,12 +163,16 @@ router.post('/signup', signupLimiter, async (req, res) => {
         const otp = user.generateOTP();
         await user.save();
 
-        // Send verification email
-        await sendVerificationEmail(email, name, otp);
+        // Send verification email (disabled - auto-verify for now)
+        // await sendVerificationEmail(email, name, otp);
+        
+        // Auto-verify user for testing
+        user.isVerified = true;
+        await user.save();
 
         res.status(201).json({
             success: true,
-            message: 'Account created! Please verify your email.',
+            message: 'Account created successfully!',
             email
         });
 
