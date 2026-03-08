@@ -80,7 +80,7 @@ app.use('/api/tests', testRoutes);
 
 // ✅ Home Route - API Health Check
 app.get('/', (req, res) => {
-    res.json({ success: true, message: 'Quiz App API is running!' });
+    res.json({ success: true, message: 'Quiz App API is running!', timestamp: new Date().toISOString() });
 });
 
 // ============================================
