@@ -305,15 +305,11 @@ async function handleSignup(e) {
             throw new Error(data.message || 'Signup failed');
         }
 
-        // Success - Backend sends a 201 or 200 (if resending OTP)
-        showToast(data.message || 'Account created! Check your email.', 'success');
-
-        // Store data for the verification page
-        sessionStorage.setItem('pendingVerification', email);
-        sessionStorage.setItem('userName', name);
+        // Success - Account created and auto-verified
+        showToast(data.message || 'Account created successfully!', 'success');
 
         setTimeout(() => {
-            window.location.href = 'verify-email.html';
+            window.location.href = 'login.html';
         }, 1500);
 
     } catch (error) {
