@@ -79,11 +79,13 @@ const sendTokenResponse = (user, statusCode, res, message) => {
 // 1. SIGNUP
 // ============================================
 router.post('/signup', signupLimiter, async (req, res) => {
+    console.log('📝 Signup request received:', req.body);
     try {
         let { name, email, password } = req.body;
 
         // Validation
         if (!name || !email || !password) {
+            console.log('❌ Missing fields');
             return res.status(400).json({
                 success: false,
                 message: 'Please provide name, email, and password'
@@ -93,6 +95,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
         // Sanitize inputs
         name = sanitizeInput(name);
         email = email.toLowerCase().trim();
+        console.log('✅ Sanitized:', { name, email });
 
         // Validate email
         if (!isValidEmail(email)) {
@@ -125,7 +128,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
         }
 
         // Check if user exists
+        console.log('🔍 Checking if user exists...');
         const existingUser = await User.findOne({ email });
+        console.log('✅ User check complete:', existingUser ? 'Found' : 'Not found');
 
         if (existingUser) {
             if (existingUser.isVerified) {
