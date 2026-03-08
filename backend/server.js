@@ -38,6 +38,7 @@ app.use(helmet({
 // 2. CORS (Allows your Frontend to talk to Backend)
 const corsOrigins = [
     process.env.FRONTEND_URL,
+    'https://majestic-praline-3d0121.netlify.app',
     'http://127.0.0.1:5500',
     'http://localhost:5500',
     'http://localhost:5000',
