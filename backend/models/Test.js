@@ -181,14 +181,14 @@ testSchema.virtual('participantCount').get(function() {
 // Check if user is participant
 testSchema.methods.isParticipant = function(userId) {
     return this.participants.some(
-        p => p.user.toString() === userId.toString()
+        p => (p.user._id || p.user).toString() === userId.toString()
     );
 };
 
 // Get participant data
 testSchema.methods.getParticipant = function(userId) {
     return this.participants.find(
-        p => p.user.toString() === userId.toString()
+        p => (p.user._id || p.user).toString() === userId.toString()
     );
 };
 

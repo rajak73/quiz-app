@@ -3,7 +3,7 @@ const Test = require('../models/Test');
 // Create a new test
 exports.createTest = async (req, res) => {
     try {
-        const { title, description, type, maxParticipants, questions, duration, subject } = req.body;
+        let { title, description, type, maxParticipants, questions, duration, subject } = req.body;
         
         // Validation
         if (!title || !type || !questions || !subject) {
@@ -12,6 +12,11 @@ exports.createTest = async (req, res) => {
                 message: 'Title, type, questions, and subject are required'
             });
         }
+        
+        const validator = require('validator');
+        title = validator.escape(validator.trim(title));
+        if (description) description = validator.escape(validator.trim(description));
+        subject = validator.escape(validator.trim(subject));
         
         if (type === 'groupwise' && !maxParticipants) {
             return res.status(400).json({
@@ -198,9 +203,9 @@ exports.getTest = async (req, res) => {
         const isCreator = test.creator._id.toString() === req.user._id.toString();
         const isParticipant = test.isParticipant(req.user._id);
         
-        // Hide correct answers if user is participant and test is active
+        // Hide correct answers for everyone except the creator
         let questions = test.questions;
-        if (isParticipant && test.status === 'active') {
+        if (!isCreator) {
             questions = test.questions.map(q => ({
                 question: q.question,
                 options: q.options
@@ -514,3 +519,181 @@ exports.endTest = async (req, res) => {
         });
     }
 };
+
+// Update a test (creator only)
+exports.updateTest = async (req, res) => {
+    try {
+        const test = await Test.findById(req.params.id);
+        
+        if (!test) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test not found'
+            });
+        }
+        
+        if (test.creator.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only creator can update the test'
+            });
+        }
+        
+        // Cannot update if test is already active or completed
+        if (test.status !== 'waiting') {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot update an active or completed test'
+            });
+        }
+        
+        let { title, description, maxParticipants, duration, subject } = req.body;
+        
+        const validator = require('validator');
+        if (title) test.title = validator.escape(validator.trim(title));
+        if (description) test.description = validator.escape(validator.trim(description));
+        if (subject) test.subject = validator.escape(validator.trim(subject));
+        if (duration) test.duration = duration;
+        
+        if (test.type === 'groupwise' && maxParticipants) {
+            test.maxParticipants = maxParticipants;
+        }
+        
+        await test.save();
+        
+        res.json({
+            success: true,
+            message: 'Test updated successfully',
+            test: {
+                id: test._id,
+                title: test.title,
+                description: test.description,
+                type: test.type,
+                duration: test.duration,
+                subject: test.subject
+            }
+        });
+        
+    } catch (error) {
+        console.error('Update test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update test'
+        });
+    }
+};
+
+// Delete a test (creator only)
+exports.deleteTest = async (req, res) => {
+    try {
+        const test = await Test.findById(req.params.id);
+        
+        if (!test) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test not found'
+            });
+        }
+        
+        if (test.creator.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only creator can delete the test'
+            });
+        }
+        
+        await Test.deleteOne({ _id: req.params.id });
+        
+        res.json({
+            success: true,
+            message: 'Test deleted successfully'
+        });
+        
+    } catch (error) {
+        console.error('Delete test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete test'
+        });
+    }
+};
+
+// Duplicate a test (creator only)
+exports.duplicateTest = async (req, res) => {
+    try {
+        const originalTest = await Test.findById(req.params.id);
+        
+        if (!originalTest) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test not found'
+            });
+        }
+        
+        // Verify ownership
+        if (originalTest.creator.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only creator can duplicate the test'
+            });
+        }
+        
+        // Create cloned data (stripping out participants and IDs)
+        const clonedQuestions = originalTest.questions.map(q => ({
+            question: q.question,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation
+        }));
+
+        const testData = {
+            title: `${originalTest.title} (Copy)`,
+            description: originalTest.description,
+            type: originalTest.type,
+            creator: req.user._id,
+            duration: originalTest.duration,
+            subject: originalTest.subject,
+            questions: clonedQuestions
+        };
+        
+        if (originalTest.type === 'groupwise') {
+            testData.maxParticipants = originalTest.maxParticipants;
+        }
+        
+        const duplicatedTest = new Test(testData);
+        
+        // Generate secret code for groupwise tests
+        let secretCode = null;
+        if (duplicatedTest.type === 'groupwise') {
+            secretCode = duplicatedTest.generateSecretCode();
+        }
+        
+        // Add creator as first participant for personal tests
+        if (duplicatedTest.type === 'personal') {
+            duplicatedTest.participants.push({ user: req.user._id });
+        }
+        
+        await duplicatedTest.save();
+        
+        res.status(201).json({
+            success: true,
+            message: 'Test duplicated successfully',
+            test: {
+                id: duplicatedTest._id,
+                title: duplicatedTest.title,
+                type: duplicatedTest.type,
+                secretCode: secretCode,
+                status: duplicatedTest.status,
+                createdAt: duplicatedTest.createdAt
+            }
+        });
+        
+    } catch (error) {
+        console.error('Duplicate test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to duplicate test'
+        });
+    }
+};
+

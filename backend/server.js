@@ -28,9 +28,18 @@ const app = express();
 // MIDDLEWARE
 // ============================================
 
-// 1. Security (Modified for Inline Scripts)
+// 1. Basic Security Headers (Helmet)
 app.use(helmet({
-    contentSecurityPolicy: false, 
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+            imgSrc: ["'self'", "data:", "blob:", "https://cdnjs.cloudflare.com"],
+            connectSrc: ["'self'", "http://localhost:5001", "https://quiz-app-backend.onrender.com", process.env.CORS_ORIGIN || "*"]
+        }
+    },
     crossOriginEmbedderPolicy: false
 }));
 
@@ -52,10 +61,15 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+const mongoSanitize = require('express-mongo-sanitize');
+
 // 3. Parsers
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' })); // Reduced from 10mb for DoS protection
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
+
+// 3.5 NoSQL Injection Protection
+app.use(mongoSanitize());
 
 // 4. Static files disabled - Frontend hosted on Netlify 
 
@@ -115,12 +129,16 @@ app.use((err, req, res, next) => {
 // ============================================
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`\n🚀 Server Running at: http://localhost:${PORT}`);
-        console.log(`📡 API Base: http://localhost:${PORT}/api/auth\n`);
+if (require.main === module) {
+    connectDB().then(() => {
+        app.listen(PORT, () => {
+            console.log(`\n🚀 Server Running at: http://localhost:${PORT}`);
+            console.log(`📡 API Base: http://localhost:${PORT}/api/auth\n`);
+        });
+    }).catch(err => {
+        console.error('❌ Database connection failed:', err.message);
+        process.exit(1);
     });
-}).catch(err => {
-    console.error('❌ Database connection failed:', err.message);
-    process.exit(1);
-});
+}
+
+module.exports = app;

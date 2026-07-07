@@ -36,4 +36,14 @@ router.get('/:id/results', testController.getResults);
 // End a test
 router.post('/:id/end', testController.endTest);
 
+// Update a test
+router.put('/:id', testController.updateTest);
+
+// Delete a test
+router.delete('/:id', testController.deleteTest);
+
+// Duplicate a test
+router.post('/:id/duplicate', testController.duplicateTest);
+
 module.exports = router;
+
