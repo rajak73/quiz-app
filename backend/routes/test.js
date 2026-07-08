@@ -45,5 +45,14 @@ router.delete('/:id', testController.deleteTest);
 // Duplicate a test
 router.post('/:id/duplicate', testController.duplicateTest);
 
+// Save a new draft
+router.post('/draft', testController.saveDraft);
+
+// Update an existing draft
+router.put('/draft/:id', testController.saveDraft);
+
+// Finalize a draft test
+router.post('/:id/finalize', testController.finalizeTest);
+
 module.exports = router;
 

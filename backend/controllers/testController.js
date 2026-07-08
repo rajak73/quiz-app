@@ -697,3 +697,121 @@ exports.duplicateTest = async (req, res) => {
     }
 };
 
+// Save or update a draft test
+exports.saveDraft = async (req, res) => {
+    try {
+        const { id } = req.params;
+        let { title, description, type, maxParticipants, questions, duration, subject } = req.body;
+        
+        const validator = require('validator');
+        if (title) title = validator.escape(validator.trim(title));
+        if (description) description = validator.escape(validator.trim(description));
+        if (subject) subject = validator.escape(validator.trim(subject));
+        
+        const draftData = {
+            title: title || 'Untitled Quiz',
+            description,
+            type: type || 'personal',
+            creator: req.user._id,
+            duration: duration || 30,
+            subject: subject || 'Uncategorized',
+            status: 'draft',
+            questions: questions || []
+        };
+        
+        if (type === 'groupwise' && maxParticipants) {
+            draftData.maxParticipants = maxParticipants;
+        }
+
+        let test;
+        if (id) {
+            test = await Test.findById(id);
+            if (!test) {
+                return res.status(404).json({ success: false, message: 'Draft not found' });
+            }
+            if (test.creator.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ success: false, message: 'Not authorized' });
+            }
+            
+            test.title = draftData.title;
+            test.description = draftData.description;
+            test.type = draftData.type;
+            test.duration = draftData.duration;
+            test.subject = draftData.subject;
+            test.questions = draftData.questions;
+            if (draftData.maxParticipants) test.maxParticipants = draftData.maxParticipants;
+            
+            await test.save();
+        } else {
+            test = new Test(draftData);
+            await test.save();
+        }
+        
+        res.json({
+            success: true,
+            message: 'Draft saved successfully',
+            testId: test._id
+        });
+    } catch (error) {
+        console.error('Save draft error:', error);
+        res.status(500).json({ success: false, message: 'Failed to save draft' });
+    }
+};
+
+// Finalize a draft into a waiting test
+exports.finalizeTest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const test = await Test.findById(id);
+        
+        if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
+        if (test.creator.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorized' });
+        
+        let { title, description, type, maxParticipants, questions, duration, subject } = req.body;
+        
+        if (!title || !type || !questions || !subject) {
+            return res.status(400).json({ success: false, message: 'Title, type, questions, and subject are required' });
+        }
+        if (!Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({ success: false, message: 'At least one question is required' });
+        }
+        
+        const validator = require('validator');
+        test.title = validator.escape(validator.trim(title));
+        if (description) test.description = validator.escape(validator.trim(description));
+        test.subject = validator.escape(validator.trim(subject));
+        test.type = type;
+        test.duration = duration || 30;
+        test.questions = questions;
+        if (type === 'groupwise') {
+            if (!maxParticipants) return res.status(400).json({ success: false, message: 'Max participants required' });
+            test.maxParticipants = maxParticipants;
+            if (!test.secretCode) test.generateSecretCode();
+        }
+        
+        test.status = 'waiting';
+        
+        // Add creator as first participant for personal tests
+        if (type === 'personal') {
+            if (!test.participants.some(p => p.user.toString() === req.user._id.toString())) {
+                test.participants.push({ user: req.user._id });
+            }
+        }
+        
+        await test.save();
+        
+        res.json({
+            success: true,
+            message: 'Test finalized successfully',
+            test: {
+                id: test._id,
+                secretCode: test.secretCode,
+                status: test.status
+            }
+        });
+    } catch (error) {
+        console.error('Finalize test error:', error);
+        res.status(500).json({ success: false, message: 'Failed to finalize test' });
+    }
+};
+

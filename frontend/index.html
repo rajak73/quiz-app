@@ -102,7 +102,10 @@
                 <div class="questions-container">
                     <h4 style="margin-bottom: 12px; color: var(--text-primary);">Questions</h4>
                     <div id="questions-list"></div>
-                    <button type="button" class="add-question-btn" id="add-question-btn">+ Add Question</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button type="button" class="add-question-btn" id="add-question-btn">+ Add Question</button>
+                        <button type="button" class="btn btn-secondary" id="open-bank-btn">Add from Bank</button>
+                    </div>
                 </div>
                 
                 <div class="modal-actions">
@@ -141,6 +144,34 @@
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-join-btn">Cancel</button>
                     <button type="button" class="btn btn-green" id="confirm-join-btn">Join</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Question Bank Modal -->
+    <div id="question-bank-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Question Bank</h3>
+                <button class="modal-close" id="bank-modal-close">&times;</button>
+            </div>
+            <div id="question-bank-content">
+                <div class="form-group">
+                    <select id="bank-subject-filter">
+                        <option value="">All Subjects</option>
+                        <option value="General Knowledge">General Knowledge</option>
+                        <option value="Mathematics">Mathematics</option>
+                        <option value="Science">Science</option>
+                        <option value="History">History</option>
+                        <option value="Geography">Geography</option>
+                        <option value="English">English</option>
+                        <option value="Computer Science">Computer Science</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div id="bank-questions-list" style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
+                    <!-- Dynamically populated -->
                 </div>
             </div>
         </div>

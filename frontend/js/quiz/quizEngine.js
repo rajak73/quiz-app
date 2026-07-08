@@ -2448,6 +2448,42 @@ if(aiCloseBtn) aiCloseBtn.addEventListener('click', () => showPopup('aiResult', 
 let currentTestType = 'personal';
 let questionsList = [];
 let currentJoinTestId = null;
+let currentDraftId = null;
+
+// Auto Save Draft logic
+async function autoSaveDraft() {
+    if (!document.getElementById('create-test-modal') || document.getElementById('create-test-modal').classList.contains('hidden') || !currentTestType) {
+        return;
+    }
+    const testData = {
+        title: document.getElementById('test-title').value,
+        description: document.getElementById('test-description').value,
+        type: currentTestType,
+        subject: document.getElementById('test-subject').value,
+        duration: parseInt(document.getElementById('test-duration').value) || 30,
+        maxParticipants: currentTestType === 'groupwise' ? parseInt(document.getElementById('max-participants').value) : undefined,
+        questions: questionsList.map(q => ({
+            question: q.question,
+            options: q.options,
+            correctAnswer: q.correctAnswer
+        }))
+    };
+    try {
+        let result;
+        if (currentDraftId) {
+            result = await window.testApi.updateDraft(currentDraftId, testData);
+        } else {
+            result = await window.testApi.saveDraft(testData);
+        }
+        if (result && result.success && result.testId) {
+            currentDraftId = result.testId;
+            console.log('Draft auto-saved:', currentDraftId);
+        }
+    } catch (error) {
+        console.error('Auto-save draft error:', error);
+    }
+}
+const debouncedAutoSaveDraft = debounce(autoSaveDraft, 5000);
 
 // API Helper
 // apiCall moved to js/api/apiClient.js
@@ -2455,6 +2491,7 @@ let currentJoinTestId = null;
 // UI functions moved to js/ui.js
 // Create Test Modal
 function openCreateTestModal(type) {
+    currentDraftId = null;
     currentTestType = type;
     document.getElementById('test-type').value = type;
     document.getElementById('modal-title').textContent = `Create ${type.charAt(0).toUpperCase() + type.slice(1)} Test`;
@@ -2495,7 +2532,10 @@ function renderQuestionsList() {
         <div class="question-item">
             <div class="question-item-header">
                 <span class="question-number">Question ${index + 1}</span>
-                <button type="button" class="remove-question-btn" onclick="removeQuestion(${index})">Remove</button>
+                <div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="saveQuestionToBank(${index})" style="padding: 2px 8px; font-size: 0.8rem; margin-right: 5px;">💾 Save</button>
+                    <button type="button" class="remove-question-btn" onclick="removeQuestion(${index})">Remove</button>
+                </div>
             </div>
             <div class="form-group">
                 <input type="text" placeholder="Enter question" value="${q.question}" 
@@ -2511,6 +2551,96 @@ function renderQuestionsList() {
             `).join('')}
         </div>
     `).join('');
+}
+
+// Question Bank Logic
+let currentBankQuestions = [];
+
+async function saveQuestionToBank(index) {
+    const q = questionsList[index];
+    const subject = document.getElementById('test-subject').value;
+    
+    if (!subject) {
+        showToast('Please select a subject for the test first.', 'error');
+        return;
+    }
+    if (!q.question.trim()) {
+        showToast('Question text cannot be empty.', 'error');
+        return;
+    }
+    if (q.options.some(opt => !opt.trim())) {
+        showToast('All options must be filled before saving.', 'error');
+        return;
+    }
+    
+    const questionData = {
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        subject: subject
+    };
+    
+    try {
+        const result = await window.testApi.saveToBank(questionData);
+        if (result.success) {
+            showToast('Question saved to bank!');
+        } else {
+            showToast(result.message || 'Failed to save question', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving to bank:', error);
+        showToast('Failed to save question', 'error');
+    }
+}
+
+async function loadBankQuestions() {
+    const subject = document.getElementById('bank-subject-filter').value;
+    try {
+        const result = await window.testApi.getBankQuestions(subject);
+        if (result.success) {
+            currentBankQuestions = result.questions;
+            const container = document.getElementById('bank-questions-list');
+            if (currentBankQuestions.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">No questions found in bank.</p>';
+                return;
+            }
+            
+            container.innerHTML = currentBankQuestions.map((q, i) => `
+                <div class="question-item" style="margin-bottom: 10px;">
+                    <div class="question-item-header">
+                        <span style="font-weight: bold; color: var(--text-primary);">${q.subject}</span>
+                        <button type="button" class="btn btn-green btn-sm" onclick="addQuestionFromBank(${i})" style="padding: 4px 8px;">+ Add to Test</button>
+                    </div>
+                    <div style="margin-top: 5px; color: var(--text-primary);">${q.question}</div>
+                    <div style="margin-top: 5px; font-size: 0.9em; color: var(--text-secondary);">
+                        ${q.options.map((opt, optIndex) => `
+                            <div>${optIndex === q.correctAnswer ? '✅' : '⚪'} ${opt}</div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading bank questions:', error);
+        showToast('Failed to load question bank', 'error');
+    }
+}
+
+function addQuestionFromBank(index) {
+    const q = currentBankQuestions[index];
+    questionsList.push({
+        question: q.question,
+        options: [...q.options],
+        correctAnswer: q.correctAnswer
+    });
+    renderQuestionsList();
+    showToast('Question added from bank!');
+    debouncedAutoSaveDraft();
+}
+
+function openQuestionBankModal() {
+    openModal('question-bank-modal');
+    loadBankQuestions();
 }
 
 // Update Question
@@ -2561,10 +2691,12 @@ async function createTest(e) {
     };
     
     try {
-        const result = await window.testApi.createTest({
-            method: 'POST',
-            body: JSON.stringify(testData)
-        });
+        let result;
+        if (currentDraftId) {
+            result = await window.testApi.finalizeTest(currentDraftId, testData);
+        } else {
+            result = await window.testApi.createTest(testData);
+        }
         
         if (result.success) {
             showToast('Test created successfully!');
@@ -2796,6 +2928,26 @@ async function viewTestDetails(testId) {
     document.addEventListener('DOMContentLoaded', () => {
         loadPublicTests();
         loadMyTests();
+        
+        // Setup draft auto-save on input change
+        const createTestModal = document.getElementById('create-test-modal');
+        if (createTestModal) {
+            createTestModal.addEventListener('input', debouncedAutoSaveDraft);
+        }
+        
+        // Setup question bank listeners
+        const openBankBtn = document.getElementById('open-bank-btn');
+        if (openBankBtn) {
+            openBankBtn.addEventListener('click', openQuestionBankModal);
+        }
+        const bankModalClose = document.getElementById('bank-modal-close');
+        if (bankModalClose) {
+            bankModalClose.addEventListener('click', () => closeModal('question-bank-modal'));
+        }
+        const bankSubjectFilter = document.getElementById('bank-subject-filter');
+        if (bankSubjectFilter) {
+            bankSubjectFilter.addEventListener('change', loadBankQuestions);
+        }
     });
 
 
@@ -2831,6 +2983,8 @@ window.manageWrongHistory = manageWrongHistory;
 window.getLevenshteinDistance = getLevenshteinDistance;
 window.handleRRFilterChange = handleRRFilterChange;
 window.renderQuestionsList = renderQuestionsList;
+window.saveQuestionToBank = saveQuestionToBank;
+window.addQuestionFromBank = addQuestionFromBank;
 window.toggleShuffle = toggleShuffle;
 window.updateNavigator = updateNavigator;
 window.isFuzzyMatch = isFuzzyMatch;

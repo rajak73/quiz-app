@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const testRoutes = require('./routes/test'); 
+const questionBankRoutes = require('./routes/questionBank'); 
 
 // ============================================
 // ENVIRONMENT VARIABLES VALIDATION
@@ -88,9 +89,10 @@ app.use('/api/', globalLimiter);
 // ============================================
 // ROUTES
 // ============================================
-
+// 7. API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/question-bank', questionBankRoutes);
 
 // ✅ Home Route - API Health Check
 app.get('/', (req, res) => {

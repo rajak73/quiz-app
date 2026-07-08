@@ -34,7 +34,7 @@ const participantSchema = new mongoose.Schema({
 const testSchema = new mongoose.Schema({
     title: {
         type: String,
-        required: [true, 'Test title is required'],
+        required: [function() { return this.status !== 'draft'; }, 'Test title is required'],
         trim: true,
         maxlength: [100, 'Title cannot exceed 100 characters']
     },
@@ -48,7 +48,7 @@ const testSchema = new mongoose.Schema({
     type: {
         type: String,
         enum: ['personal', 'groupwise', 'public'],
-        required: true
+        required: function() { return this.status !== 'draft'; }
     },
     
     creator: {
@@ -73,15 +73,14 @@ const testSchema = new mongoose.Schema({
     questions: [{
         question: {
             type: String,
-            required: true
+            required: [function() { return this.parent && this.parent().status !== 'draft'; }, 'Question text is required']
         },
         options: [{
-            type: String,
-            required: true
+            type: String
         }],
         correctAnswer: {
             type: Number,
-            required: true
+            required: [function() { return this.parent && this.parent().status !== 'draft'; }, 'Correct answer is required']
         },
         explanation: {
             type: String
@@ -90,7 +89,7 @@ const testSchema = new mongoose.Schema({
     
     status: {
         type: String,
-        enum: ['waiting', 'active', 'completed'],
+        enum: ['draft', 'waiting', 'active', 'completed'],
         default: 'waiting'
     },
     
@@ -114,7 +113,7 @@ const testSchema = new mongoose.Schema({
     
     subject: {
         type: String,
-        required: true
+        required: function() { return this.status !== 'draft'; }
     }
     
 }, { timestamps: true });
