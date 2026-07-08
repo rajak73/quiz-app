@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Quiz</title>
     <link rel="stylesheet" href="css/auth.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <div class="auth-container">
@@ -76,10 +77,22 @@
 
             <!-- Social Login -->
             <div class="social-buttons">
-                <button type="button" class="btn-social" onclick="googleLogin()">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-                    Continue with Google
-                </button>
+                <div id="g_id_onload"
+                     data-client_id="YOUR_GOOGLE_CLIENT_ID"
+                     data-context="signin"
+                     data-ux_mode="popup"
+                     data-callback="handleCredentialResponse"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-shape="rectangular"
+                     data-theme="filled_black"
+                     data-text="signin_with"
+                     data-size="large"
+                     data-logo_alignment="left"
+                     style="width: 100%; display: flex; justify-content: center;">
+                </div>
             </div>
 
             <!-- Footer -->
@@ -217,11 +230,32 @@ async function handleLogin(e) {
 }
 
         // 9. Google Login
-        async function googleLogin() {
-            showToast('Google login coming soon!', 'info');
-            // Implement Google OAuth here
-            // window.location.href = `${API_BASE_URL}/auth/google`;
+        async function handleCredentialResponse(response) {
+            try {
+                showToast('Authenticating with Google...', 'info');
+                
+                const result = await window.authApi.googleLogin(response.credential);
+                
+                if (result.success) {
+                    showToast('Logged in successfully!');
+                    
+                    // Set token
+                    if (result.token) {
+                        localStorage.setItem('token', result.token);
+                    }
+                    
+                    setTimeout(() => {
+                        window.location.replace('index.html');
+                    }, 1000);
+                } else {
+                    showToast(result.message || 'Google login failed', 'error');
+                }
+            } catch (error) {
+                console.error('Google login error:', error);
+                showToast('Failed to authenticate with Google', 'error');
+            }
         }
+        window.handleCredentialResponse = handleCredentialResponse;
 
         // 10. Check if Already Logged In
         function checkAuth() {

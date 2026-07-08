@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up - Quiz</title>
     <link rel="stylesheet" href="css/auth.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <div class="auth-container">
@@ -117,10 +118,22 @@
 
             <!-- Social Signup -->
             <div class="social-buttons">
-                <button type="button" class="btn-social" onclick="googleSignup()">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-                    Sign up with Google
-                </button>
+                <div id="g_id_onload"
+                     data-client_id="YOUR_GOOGLE_CLIENT_ID"
+                     data-context="signup"
+                     data-ux_mode="popup"
+                     data-callback="handleCredentialResponse"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-shape="rectangular"
+                     data-theme="filled_black"
+                     data-text="signup_with"
+                     data-size="large"
+                     data-logo_alignment="left"
+                     style="width: 100%; display: flex; justify-content: center;">
+                </div>
             </div>
 
             <!-- Footer -->
@@ -306,12 +319,33 @@ async function handleSignup(e) {
         setLoading(false);
     }
 }
-        // 9. Google Signup
-        function googleSignup() {
-            showToast('Google signup coming soon!', 'info');
+        // 6. Google Signup
+        async function handleCredentialResponse(response) {
+            try {
+                showToast('Authenticating with Google...', 'info');
+                
+                const result = await window.authApi.googleLogin(response.credential);
+                
+                if (result.success) {
+                    showToast('Registered successfully!');
+                    
+                    if (result.token) {
+                        localStorage.setItem('token', result.token);
+                    }
+                    
+                    setTimeout(() => {
+                        window.location.replace('index.html');
+                    }, 1000);
+                } else {
+                    showToast(result.message || 'Google registration failed', 'error');
+                }
+            } catch (error) {
+                console.error('Google signup error:', error);
+                showToast('Failed to authenticate with Google', 'error');
+            }
         }
-
-        // 10. Initialize
+        window.handleCredentialResponse = handleCredentialResponse;
+        
         document.addEventListener('DOMContentLoaded', () => {
             // Clear errors on input
             document.getElementById('name').addEventListener('input', () => clearError('nameGroup'));

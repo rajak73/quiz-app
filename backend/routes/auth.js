@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const { googleLogin } = require('../controllers/googleAuthController');
 const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 
@@ -36,6 +37,7 @@ router.post('/signup', signupLimiter, authController.signup);
 router.post('/verify-email', authController.verifyEmail);
 router.post('/resend-otp', otpLimiter, authController.resendOTP);
 router.post('/login', loginLimiter, authController.login);
+router.post('/google', googleLogin);
 router.post('/forgot-password', otpLimiter, authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 
