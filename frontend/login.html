@@ -239,10 +239,14 @@ async function handleLogin(e) {
                 if (result.success) {
                     showToast('Logged in successfully!');
                     
-                    // Set token
+                    // Set token and user data
                     if (result.token) {
                         localStorage.setItem('token', result.token);
                     }
+                    if (result.user) {
+                        localStorage.setItem('user', JSON.stringify(result.user));
+                    }
+                    localStorage.setItem('isAuthenticated', 'true');
                     
                     setTimeout(() => {
                         window.location.replace('index.html');

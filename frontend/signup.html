@@ -332,6 +332,10 @@ async function handleSignup(e) {
                     if (result.token) {
                         localStorage.setItem('token', result.token);
                     }
+                    if (result.user) {
+                        localStorage.setItem('user', JSON.stringify(result.user));
+                    }
+                    localStorage.setItem('isAuthenticated', 'true');
                     
                     setTimeout(() => {
                         window.location.replace('index.html');
