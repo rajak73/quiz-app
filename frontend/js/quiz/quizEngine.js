@@ -2762,6 +2762,7 @@ async function loadMyTests() {
                         </div>
                     </div>
                     <div class="test-item-actions">
+                        ${test.status === 'draft' ? `<button class="btn btn-green" onclick="editDraftTest('${test.id}')">Resume Draft</button>` : ''}
                         ${test.status === 'waiting' ? `<button class="btn btn-green" onclick="startTest('${test.id}')">Start</button>` : ''}
                         <button class="btn btn-secondary" onclick="viewTestDetails('${test.id}')">View</button>
                         <button class="btn btn-secondary" onclick="duplicateTest('${test.id}')">Duplicate</button>
@@ -2854,6 +2855,50 @@ async function startTest(testId) {
     } catch (error) {
         console.error('Start test error:', error);
         showToast('Failed to start test', 'error');
+    }
+}
+
+// Resume Draft Test
+async function editDraftTest(testId) {
+    try {
+        showToast('Loading draft...', 'info');
+        const result = await apiCall(`/tests/${testId}`);
+        
+        if (result.success) {
+            const test = result.test;
+            
+            currentDraftId = test.id;
+            currentTestType = test.type;
+            
+            document.getElementById('test-type').value = test.type;
+            document.getElementById('test-title').value = test.title === 'Untitled Quiz' ? '' : test.title;
+            document.getElementById('test-description').value = test.description || '';
+            document.getElementById('test-subject').value = test.subject || '';
+            document.getElementById('test-duration').value = test.duration || 30;
+            
+            if (test.type === 'groupwise') {
+                document.getElementById('max-participants-group').style.display = 'block';
+                document.getElementById('max-participants').value = test.maxParticipants || '';
+            } else {
+                document.getElementById('max-participants-group').style.display = 'none';
+            }
+            
+            questionsList = test.questions.map(q => ({
+                question: q.question,
+                options: [...q.options],
+                correctAnswer: q.correctAnswer
+            }));
+            
+            renderQuestionsList();
+            
+            document.getElementById('modal-title').textContent = `Resume ${test.type.charAt(0).toUpperCase() + test.type.slice(1)} Test`;
+            openModal('create-test-modal');
+        } else {
+            showToast(result.message || 'Failed to load draft', 'error');
+        }
+    } catch (error) {
+        console.error('Resume draft error:', error);
+        showToast('Failed to load draft', 'error');
     }
 }
 
@@ -2965,6 +3010,7 @@ window.showFilteredQuestionsPopup = showFilteredQuestionsPopup;
 window.handlePauseClick = handlePauseClick;
 window.getSmartRevisionQuestions = getSmartRevisionQuestions;
 window.viewTestDetails = viewTestDetails;
+window.editDraftTest = editDraftTest;
 window.showGenericQuestionDetail = showGenericQuestionDetail;
 window.populateRRSheetFilter = populateRRSheetFilter;
 window.handleRRQuestionClick = handleRRQuestionClick;
