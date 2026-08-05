@@ -38,7 +38,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
             imgSrc: ["'self'", "data:", "blob:", "https://cdnjs.cloudflare.com"],
-            connectSrc: ["'self'", "http://localhost:5001", "https://quiz-app-backend.onrender.com", process.env.CORS_ORIGIN || "*"]
+            connectSrc: ["'self'", "http://localhost:5001", "https://quiz-app-backend.onrender.com", process.env.FRONTEND_URL].filter(Boolean)
         }
     },
     crossOriginEmbedderPolicy: false

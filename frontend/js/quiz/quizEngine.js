@@ -1537,7 +1537,8 @@
                     wrapper.appendChild(container);
 
                     const footer = document.createElement('div');
-                    const shareAppName = (typeof userName !== 'undefined' && userName) ? `${userName}'s Quiz` : 'Quiz';
+                    const currentUserName = window.getUserName ? window.getUserName() : '';
+                    const shareAppName = currentUserName ? `${currentUserName}'s Quiz` : 'Quiz';
                     footer.innerHTML = DOMPurify.sanitize(`<div style='margin-top:20px; padding-top:10px; border-top:1px solid #444; text-align:right; font-size:12px; color: #6dd5ed; font-weight:bold;'>✨ Shared via ${shareAppName}</div>`);
                     wrapper.appendChild(footer);
 
@@ -1547,7 +1548,8 @@
                     document.body.removeChild(wrapper);
 
                     canvas.toBlob(async (blob) => {
-                        const cardName = (typeof userName !== 'undefined' && userName) ? `${userName}_quiz_card` : 'quiz_card';
+                        const nameForCard = window.getUserName ? window.getUserName() : '';
+                        const cardName = nameForCard ? `${nameForCard}_quiz_card` : 'quiz_card';
                     const file = new File([blob], `${cardName}.png`, { type: "image/png" });
                         if (navigator.share && navigator.canShare({ files: [file] })) {
                             try { await navigator.share({ files: [file] }); btn.innerHTML = '✅'; } catch (err) { btn.innerHTML = originalText; }
@@ -2259,7 +2261,10 @@
             </div>
             
             <div id="ai-answer-content"></div>
-            
+            <div class="popup-footer">
+                <button class="btn btn-blue" id="ai-copy-btn">Copy Answer 📋</button>
+            </div>
+
             <div class="ai-chat-footer">
                 <input type="text" id="ai-followup-input" class="ai-chat-input" placeholder="Ask a follow-up question..." autocomplete="off">
                 <button class="ai-send-btn" id="ai-send-btn">➤</button>
@@ -2267,6 +2272,10 @@
         `;
 
         document.getElementById('ai-popup-close-btn').addEventListener('click', () => showPopup('aiResult', false));
+        document.getElementById('ai-copy-btn').addEventListener('click', () => {
+            const text = document.getElementById('ai-answer-content').innerText;
+            navigator.clipboard.writeText(text).then(() => showToast('Copied!'));
+        });
 
         const sendBtn = document.getElementById('ai-send-btn');
         const chatInput = document.getElementById('ai-followup-input');
@@ -2764,8 +2773,10 @@ async function loadMyTests() {
                     <div class="test-item-actions">
                         ${test.status === 'draft' ? `<button class="btn btn-green" onclick="editDraftTest('${test.id}')">Resume Draft</button>` : ''}
                         ${test.status === 'waiting' ? `<button class="btn btn-green" onclick="startTest('${test.id}')">Start</button>` : ''}
+                        ${test.status === 'waiting' ? `<button class="btn btn-secondary" onclick="editWaitingTestUI('${test.id}')">Edit</button>` : ''}
                         <button class="btn btn-secondary" onclick="viewTestDetails('${test.id}')">View</button>
                         <button class="btn btn-secondary" onclick="duplicateTest('${test.id}')">Duplicate</button>
+                        <button class="btn btn-red" onclick="deleteTestUI('${test.id}')">Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -2774,6 +2785,35 @@ async function loadMyTests() {
         }
     } catch (error) {
         console.error('Load my tests error:', error);
+    }
+}
+
+// Load Tests I Joined
+async function loadJoinedTests() {
+    try {
+        const result = await window.testApi.getJoinedTests();
+        const container = document.getElementById('joined-tests-list');
+        if (!container) return;
+
+        if (result.success && result.tests.length > 0) {
+            container.innerHTML = result.tests.map(test => `
+                <div class="test-item">
+                    <div class="test-item-info">
+                        <div class="test-item-title">${test.title}</div>
+                        <div class="test-item-meta">
+                            ${test.type} • by ${test.creator} • Status: ${test.status} • My score: ${test.myScore}
+                        </div>
+                    </div>
+                    <div class="test-item-actions">
+                        <button class="btn btn-secondary" onclick="viewTestDetails('${test.id}')">View</button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<p style="color: #6b7280; text-align: center; padding: 20px;">No joined tests yet</p>';
+        }
+    } catch (error) {
+        console.error('Load joined tests error:', error);
     }
 }
 
@@ -2806,13 +2846,88 @@ async function duplicateTest(testId) {
     }
 }
 
+// Delete a test (creator only)
+async function deleteTestUI(testId) {
+    if (!confirm('Delete this test permanently? This cannot be undone.')) return;
+    try {
+        const result = await window.testApi.deleteTest(testId);
+        if (result.success) {
+            showToast('Test deleted');
+            loadMyTests();
+        } else {
+            showToast(result.message || 'Failed to delete test', 'error');
+        }
+    } catch (error) {
+        console.error('Delete test error:', error);
+        showToast('Failed to delete test', 'error');
+    }
+}
+
+// Edit a waiting test's basic details (title/description/duration/maxParticipants only —
+// the backend intentionally disallows changing questions once a test has left draft status)
+async function editWaitingTestUI(testId) {
+    try {
+        const result = await window.testApi.getTestDetails(testId);
+        if (!result.success) {
+            showToast(result.message || 'Failed to load test', 'error');
+            return;
+        }
+        const test = result.test;
+
+        const newTitle = prompt('Title:', test.title);
+        if (newTitle === null) return;
+        const newDescription = prompt('Description:', test.description || '');
+        if (newDescription === null) return;
+        const newDuration = prompt('Duration (minutes):', test.duration);
+        if (newDuration === null) return;
+
+        const updateData = {
+            title: newTitle,
+            description: newDescription,
+            duration: parseInt(newDuration) || test.duration
+        };
+
+        if (test.type === 'groupwise') {
+            const newMax = prompt('Max participants:', test.maxParticipants);
+            if (newMax === null) return;
+            updateData.maxParticipants = parseInt(newMax) || test.maxParticipants;
+        }
+
+        const updateResult = await window.testApi.updateTest(testId, updateData);
+        if (updateResult.success) {
+            showToast('Test updated');
+            loadMyTests();
+        } else {
+            showToast(updateResult.message || 'Failed to update test', 'error');
+        }
+    } catch (error) {
+        console.error('Edit waiting test error:', error);
+        showToast('Failed to update test', 'error');
+    }
+}
+
+// End an active test (creator only)
+async function endTestUI(testId) {
+    if (!confirm('End this test now? Participants will no longer be able to submit answers.')) return;
+    try {
+        const result = await window.testApi.endTest(testId);
+        if (result.success) {
+            showToast('Test ended');
+            closeModal('test-detail-modal');
+            loadMyTests();
+        } else {
+            showToast(result.message || 'Failed to end test', 'error');
+        }
+    } catch (error) {
+        console.error('End test error:', error);
+        showToast('Failed to end test', 'error');
+    }
+}
+
 // Join Public Test
 async function joinPublicTest(testId) {
     try {
-        const result = await apiCall(`/tests/${testId}/join`, {
-            method: 'POST',
-            body: JSON.stringify({})
-        });
+        const result = await window.testApi.joinTest(testId, {});
         
         if (result.success) {
             showToast('Joined test successfully!');
@@ -2828,23 +2943,39 @@ async function joinPublicTest(testId) {
 
 // Join Test with Code
 async function joinTestWithCode() {
-    const code = document.getElementById('join-test-code').value.trim().toUpperCase();
+    const codeInput = document.getElementById('join-test-code');
+    const code = codeInput.value.trim().toUpperCase();
     if (!code) {
         showToast('Please enter a secret code', 'error');
         return;
     }
-    
-    // Find test by code - we'll need to implement this
-    // For now, we'll show a message
-    showToast('Searching for test...', 'success');
+
+    try {
+        showToast('Searching for test...', 'info');
+        const lookup = await window.testApi.findTestByCode(code);
+        if (!lookup.success) {
+            showToast(lookup.message || 'No test found with that code', 'error');
+            return;
+        }
+
+        const joinResult = await window.testApi.joinTest(lookup.testId, { secretCode: code });
+        if (joinResult.success) {
+            showToast('Joined test successfully!');
+            codeInput.value = '';
+            viewTestDetails(lookup.testId);
+        } else {
+            showToast(joinResult.message || 'Failed to join test', 'error');
+        }
+    } catch (error) {
+        console.error('Join by code error:', error);
+        showToast('Failed to join test', 'error');
+    }
 }
 
 // Start Test
 async function startTest(testId) {
     try {
-        const result = await apiCall(`/tests/${testId}/start`, {
-            method: 'POST'
-        });
+        const result = await window.testApi.startTest(testId);
         
         if (result.success) {
             showToast('Test started!');
@@ -2862,7 +2993,7 @@ async function startTest(testId) {
 async function editDraftTest(testId) {
     try {
         showToast('Loading draft...', 'info');
-        const result = await apiCall(`/tests/${testId}`);
+        const result = await window.testApi.getTestDetails(testId);
         
         if (result.success) {
             const test = result.test;
@@ -2905,7 +3036,7 @@ async function editDraftTest(testId) {
 // View Test Details
 async function viewTestDetails(testId) {
     try {
-        const result = await apiCall(`/tests/${testId}`);
+        const result = await window.testApi.getTestDetails(testId);
         
         if (result.success) {
             const test = result.test;
@@ -2930,6 +3061,10 @@ async function viewTestDetails(testId) {
                 
                 <div class="modal-actions" style="margin-top: 20px;">
                     ${test.isCreator && test.status === 'waiting' ? `<button class="btn btn-green" onclick="startTest('${test.id}'); closeModal('test-detail-modal');">Start Test</button>` : ''}
+                    ${test.status === 'active' && (test.isParticipant || test.isCreator) ? `<button class="btn btn-green" onclick="closeModal('test-detail-modal'); startCompeteQuiz('${test.id}');">Answer Questions</button>` : ''}
+                    ${test.isCreator && test.status === 'active' ? `<button class="btn btn-red" onclick="endTestUI('${test.id}')">End Test</button>` : ''}
+                    ${test.status === 'completed' ? `<button class="btn btn-blue" onclick="closeModal('test-detail-modal'); showCompeteResults('${test.id}');">View Results</button>` : ''}
+                    ${test.isCreator ? `<button class="btn btn-blue" onclick="closeModal('test-detail-modal'); showTestAnalytics('${test.id}');">Analytics</button>` : ''}
                     <button class="btn btn-secondary" onclick="closeModal('test-detail-modal')">Close</button>
                 </div>
             `;
@@ -2938,6 +3073,267 @@ async function viewTestDetails(testId) {
     } catch (error) {
         console.error('View test details error:', error);
         showToast('Failed to load test details', 'error');
+    }
+}
+
+// ============================================
+// COMPETE MODE: QUIZ-TAKING FLOW
+// ============================================
+let competeQuizState = null; // { testId, questions, answers, currentIndex, timerInterval }
+
+function stopCompeteTimer() {
+    if (competeQuizState && competeQuizState.timerInterval) {
+        clearInterval(competeQuizState.timerInterval);
+        competeQuizState.timerInterval = null;
+    }
+}
+
+function startCompeteTimer(endTime) {
+    const timerEl = document.getElementById('compete-quiz-timer');
+    const end = new Date(endTime).getTime();
+
+    const tick = () => {
+        const remainingMs = end - Date.now();
+        if (remainingMs <= 0) {
+            timerEl.textContent = '00:00';
+            stopCompeteTimer();
+            showToast('Time is up! Submitting your answers...', 'info');
+            submitCompeteQuiz();
+            return;
+        }
+        const totalSeconds = Math.floor(remainingMs / 1000);
+        const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+        const secs = (totalSeconds % 60).toString().padStart(2, '0');
+        timerEl.textContent = `${mins}:${secs}`;
+        timerEl.classList.toggle('timer-low', remainingMs <= 60000);
+    };
+
+    tick();
+    competeQuizState.timerInterval = setInterval(tick, 1000);
+}
+
+async function startCompeteQuiz(testId) {
+    try {
+        const result = await window.testApi.getTestDetails(testId);
+        if (!result.success) {
+            showToast(result.message || 'Failed to load quiz', 'error');
+            return;
+        }
+        const test = result.test;
+        if (test.status !== 'active') {
+            showToast('This test is not active right now', 'error');
+            return;
+        }
+
+        competeQuizState = {
+            testId,
+            questions: test.questions,
+            answers: new Array(test.questions.length).fill(null),
+            currentIndex: 0,
+            timerInterval: null
+        };
+
+        document.getElementById('compete-quiz-title').textContent = test.title;
+        renderCompeteQuestion();
+        openModal('compete-quiz-modal');
+        startCompeteTimer(test.endTime);
+    } catch (error) {
+        console.error('Start compete quiz error:', error);
+        showToast('Failed to start quiz', 'error');
+    }
+}
+
+function selectCompeteOption(optionIndex) {
+    if (!competeQuizState) return;
+    competeQuizState.answers[competeQuizState.currentIndex] = optionIndex;
+    renderCompeteQuestion();
+}
+
+function renderCompeteQuestion() {
+    if (!competeQuizState) return;
+    const { questions, answers, currentIndex } = competeQuizState;
+    const q = questions[currentIndex];
+    const content = document.getElementById('compete-quiz-content');
+
+    content.innerHTML = `
+        <div class="test-detail-meta" style="margin-bottom: 10px;">Question ${currentIndex + 1} of ${questions.length}</div>
+        <div class="question-text" style="font-size: 1.1rem; margin-bottom: 16px;">${DOMPurify.sanitize(q.question)}</div>
+        <div class="compete-options-list" style="display: flex; flex-direction: column; gap: 10px;">
+            ${q.options.map((opt, i) => `
+                <button type="button" class="btn ${answers[currentIndex] === i ? 'btn-green' : 'btn-secondary'}" style="text-align: left;" onclick="selectCompeteOption(${i})">
+                    ${DOMPurify.sanitize(opt)}
+                </button>
+            `).join('')}
+        </div>
+    `;
+
+    const prevBtn = document.getElementById('compete-quiz-prev-btn');
+    const nextBtn = document.getElementById('compete-quiz-next-btn');
+    const submitBtn = document.getElementById('compete-quiz-submit-btn');
+    prevBtn.disabled = currentIndex === 0;
+    const isLast = currentIndex === questions.length - 1;
+    nextBtn.classList.toggle('hidden', isLast);
+    submitBtn.classList.toggle('hidden', !isLast);
+
+    renderCompeteQuizPalette();
+}
+
+function renderCompeteQuizPalette() {
+    if (!competeQuizState) return;
+    const { questions, answers, currentIndex } = competeQuizState;
+
+    const answeredCount = answers.filter(a => a !== null).length;
+    const progressBar = document.getElementById('compete-quiz-progress-bar');
+    if (progressBar) progressBar.style.width = `${Math.round((answeredCount / questions.length) * 100)}%`;
+
+    const palette = document.getElementById('compete-quiz-palette');
+    if (palette) {
+        palette.innerHTML = questions.map((_, i) => `
+            <button type="button"
+                class="compete-quiz-palette-btn ${answers[i] !== null ? 'answered' : ''} ${i === currentIndex ? 'current' : ''}"
+                onclick="jumpToCompeteQuestion(${i})">${i + 1}</button>
+        `).join('');
+    }
+}
+
+function goToCompeteQuestion(delta) {
+    if (!competeQuizState) return;
+    const newIndex = competeQuizState.currentIndex + delta;
+    if (newIndex < 0 || newIndex >= competeQuizState.questions.length) return;
+    competeQuizState.currentIndex = newIndex;
+    renderCompeteQuestion();
+}
+
+function jumpToCompeteQuestion(index) {
+    if (!competeQuizState) return;
+    if (index < 0 || index >= competeQuizState.questions.length) return;
+    competeQuizState.currentIndex = index;
+    renderCompeteQuestion();
+}
+
+function exitCompeteQuiz() {
+    if (!confirm('Exit without submitting? Your answers so far will be lost.')) return;
+    stopCompeteTimer();
+    competeQuizState = null;
+    closeModal('compete-quiz-modal');
+}
+
+async function submitCompeteQuiz() {
+    if (!competeQuizState) return;
+    stopCompeteTimer();
+
+    const { testId, questions, answers } = competeQuizState;
+    const payload = questions.map((q, i) => ({
+        questionIndex: i,
+        selectedOption: answers[i] === null ? -1 : answers[i],
+        timeTaken: 0
+    }));
+
+    try {
+        const result = await window.testApi.submitAnswer(testId, payload);
+        closeModal('compete-quiz-modal');
+        competeQuizState = null;
+
+        if (result.success) {
+            showToast(`Submitted! Score: ${result.score}/${result.totalQuestions}`);
+            showCompeteResults(testId);
+        } else {
+            showToast(result.message || 'Failed to submit answers', 'error');
+        }
+    } catch (error) {
+        console.error('Submit compete quiz error:', error);
+        showToast('Failed to submit answers', 'error');
+    }
+}
+
+// ============================================
+// COMPETE MODE: RESULTS / LEADERBOARD
+// ============================================
+async function showCompeteResults(testId) {
+    try {
+        const result = await window.testApi.getResults(testId);
+        const content = document.getElementById('compete-results-content');
+
+        if (!result.success) {
+            showToast(result.message || 'Failed to load results', 'error');
+            return;
+        }
+
+        const { title, totalQuestions, participants, myRank } = result.results;
+        const medals = ['🥇', '🥈', '🥉'];
+
+        content.innerHTML = `
+            <div class="test-detail-header">
+                <h2>${title}</h2>
+                <div class="test-detail-meta">${totalQuestions} questions • ${participants.length} participants</div>
+            </div>
+            ${myRank > 0 ? `<p style="text-align: center; margin: 12px 0;"><span class="secret-code-badge">Your Rank: #${myRank}</span></p>` : ''}
+            <div class="participants-list">
+                ${participants.length === 0
+                    ? '<p style="color: #6b7280; text-align: center; padding: 20px;">No one has submitted yet.</p>'
+                    : participants.map(p => `
+                        <div class="participant-row ${p.rank === myRank ? 'my-rank-row' : ''}">
+                            <span class="participant-name">${medals[p.rank - 1] || `#${p.rank}`} ${p.name}</span>
+                            <span class="participant-status">${p.score}/${totalQuestions}</span>
+                        </div>
+                    `).join('')
+                }
+            </div>
+        `;
+        openModal('compete-results-modal');
+    } catch (error) {
+        console.error('Show results error:', error);
+        showToast('Failed to load results', 'error');
+    }
+}
+
+// ============================================
+// COMPETE MODE: CREATOR ANALYTICS
+// ============================================
+async function showTestAnalytics(testId) {
+    try {
+        const result = await window.testApi.getTestAnalytics(testId);
+        const content = document.getElementById('compete-analytics-content');
+
+        if (!result.success) {
+            showToast(result.message || 'Failed to load analytics', 'error');
+            return;
+        }
+
+        const a = result.analytics;
+
+        content.innerHTML = `
+            <div class="test-detail-header">
+                <h2>${a.title}</h2>
+            </div>
+            <div id="home-stats" class="glass-panel" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <span class="stat-number">${a.completedCount}/${a.totalParticipants}</span>
+                    <span class="stat-label">Completed</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number">${a.averageScore}/${a.totalQuestions}</span>
+                    <span class="stat-label">Avg Score</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number">${a.hardestQuestion ? a.hardestQuestion.correctPercent + '%' : '-'}</span>
+                    <span class="stat-label">Hardest Q Accuracy</span>
+                </div>
+            </div>
+            <h4 style="margin-bottom: 12px;">Per-Question Accuracy</h4>
+            <div class="participants-list">
+                ${a.perQuestion.map(q => `
+                    <div class="participant-row">
+                        <span class="participant-name">Q${q.questionIndex + 1}: ${DOMPurify.sanitize(q.question)}</span>
+                        <span class="participant-status">${q.correctPercent}% (${q.correctCount}/${q.attemptedCount})</span>
+                    </div>
+                `).join('') || '<p style="color: #6b7280; text-align: center; padding: 20px;">No data yet.</p>'}
+            </div>
+        `;
+        openModal('compete-analytics-modal');
+    } catch (error) {
+        console.error('Show analytics error:', error);
+        showToast('Failed to load analytics', 'error');
     }
 }
 
@@ -2956,7 +3352,17 @@ async function viewTestDetails(testId) {
     document.getElementById('test-detail-close').addEventListener('click', () => closeModal('test-detail-modal'));
     document.getElementById('join-modal-close').addEventListener('click', () => closeModal('join-test-modal'));
     document.getElementById('cancel-join-btn').addEventListener('click', () => closeModal('join-test-modal'));
-    
+
+    // Compete quiz-taking + results modal controls
+    document.getElementById('compete-quiz-prev-btn').addEventListener('click', () => goToCompeteQuestion(-1));
+    document.getElementById('compete-quiz-next-btn').addEventListener('click', () => goToCompeteQuestion(1));
+    document.getElementById('compete-quiz-submit-btn').addEventListener('click', () => {
+        if (confirm('Submit your answers? You cannot change them after this.')) submitCompeteQuiz();
+    });
+    document.getElementById('compete-quiz-exit-btn').addEventListener('click', exitCompeteQuiz);
+    document.getElementById('compete-results-close').addEventListener('click', () => closeModal('compete-results-modal'));
+    document.getElementById('compete-analytics-close').addEventListener('click', () => closeModal('compete-analytics-modal'));
+
     // Add question button
     document.getElementById('add-question-btn').addEventListener('click', addQuestion);
     
@@ -2968,12 +3374,36 @@ async function viewTestDetails(testId) {
     
     // Join test button
     document.getElementById('join-test-btn').addEventListener('click', joinTestWithCode);
-    
+
+    // Study / Compete mode switcher
+    function switchMode(mode) {
+        const studySection = document.getElementById('study-mode-section');
+        const competeSection = document.getElementById('compete-mode-section');
+        const studyTab = document.getElementById('mode-tab-study');
+        const competeTab = document.getElementById('mode-tab-compete');
+        if (!studySection || !competeSection) return;
+
+        const isCompete = mode === 'compete';
+        studySection.classList.toggle('hidden', isCompete);
+        competeSection.classList.toggle('hidden', !isCompete);
+        if (studyTab) studyTab.classList.toggle('active', !isCompete);
+        if (competeTab) competeTab.classList.toggle('active', isCompete);
+        localStorage.setItem('homeMode', mode);
+    }
+    window.switchMode = switchMode;
+
+    const modeTabStudy = document.getElementById('mode-tab-study');
+    const modeTabCompete = document.getElementById('mode-tab-compete');
+    if (modeTabStudy) modeTabStudy.addEventListener('click', () => switchMode('study'));
+    if (modeTabCompete) modeTabCompete.addEventListener('click', () => switchMode('compete'));
+    switchMode(localStorage.getItem('homeMode') === 'compete' ? 'compete' : 'study');
+
     // Load initial data
     document.addEventListener('DOMContentLoaded', () => {
         loadPublicTests();
         loadMyTests();
-        
+        loadJoinedTests();
+
         // Setup draft auto-save on input change
         const createTestModal = document.getElementById('create-test-modal');
         if (createTestModal) {
@@ -2997,155 +3427,155 @@ async function viewTestDetails(testId) {
 
 
 // --- FACADE BINDINGS (Autogenerated) ---
-window.submitTest = submitTest;
-window.saveSubjects = saveSubjects;
-window.typeWriterEffect = typeWriterEffect;
-window.openUniversalSearch = openUniversalSearch;
-window.loadDataFromStorage = loadDataFromStorage;
-window.selectAnswer = selectAnswer;
-window.handleTouchStart = handleTouchStart;
-window.exportAllData = exportAllData;
-window.joinPublicTest = joinPublicTest;
-window.showFilteredQuestionsPopup = showFilteredQuestionsPopup;
-window.handlePauseClick = handlePauseClick;
-window.getSmartRevisionQuestions = getSmartRevisionQuestions;
-window.viewTestDetails = viewTestDetails;
-window.editDraftTest = editDraftTest;
-window.showGenericQuestionDetail = showGenericQuestionDetail;
-window.populateRRSheetFilter = populateRRSheetFilter;
-window.handleRRQuestionClick = handleRRQuestionClick;
-window.requestWakeLock = requestWakeLock;
-window.loadMyTests = loadMyTests;
-window.startTimers = startTimers;
-window.updateSmartRevisionQuestions = updateSmartRevisionQuestions;
-window.stopTimers = stopTimers;
-window.loadPublicTests = loadPublicTests;
-window.showLibraryPopup = showLibraryPopup;
-window.showNoteEditor = showNoteEditor;
-window.setupLongPressForFont = setupLongPressForFont;
-window.togglePause = togglePause;
-window.addSmartRevisionListeners = addSmartRevisionListeners;
-window.manageWrongHistory = manageWrongHistory;
-window.getLevenshteinDistance = getLevenshteinDistance;
-window.handleRRFilterChange = handleRRFilterChange;
-window.renderQuestionsList = renderQuestionsList;
-window.saveQuestionToBank = saveQuestionToBank;
-window.addQuestionFromBank = addQuestionFromBank;
-window.toggleShuffle = toggleShuffle;
-window.updateNavigator = updateNavigator;
-window.isFuzzyMatch = isFuzzyMatch;
-window.enterLibrarySelectionMode = enterLibrarySelectionMode;
-window.switchToList = switchToList;
-window.updateUIAfterDataLoad = updateUIAfterDataLoad;
-window.handleSelectionMouseUp = handleSelectionMouseUp;
-window.fallbackCopy = fallbackCopy;
-window.debounce = debounce;
-window.startTest = startTest;
-window.getSavedFiles = getSavedFiles;
-window.openCreateTestModal = openCreateTestModal;
-window.initialize = initialize;
-window.resumeQuiz = resumeQuiz;
-window.saveAndLoadFile = saveAndLoadFile;
-window.applySettingsListeners = applySettingsListeners;
-window.addCustomTestSetupListeners = addCustomTestSetupListeners;
-window.handleTouchEnd = handleTouchEnd;
-window.setupHoverActions = setupHoverActions;
-window.startQuiz = startQuiz;
-window.handleHistoryMouseDown = handleHistoryMouseDown;
-window.updateQuestion = updateQuestion;
-window.shuffleArray = shuffleArray;
-window.showTestReview = showTestReview;
-window.handleHistoryItemClick = handleHistoryItemClick;
-window.startNormalTestFromRR = startNormalTestFromRR;
-window.handleFabVisibility = handleFabVisibility;
-window.showTestHistory = showTestHistory;
-window.addEventListeners = addEventListeners;
-window.saveQuizState = saveQuizState;
-window.markQuestionForReview = markQuestionForReview;
-window.resetQuizState = resetQuizState;
-window.exitQuizToHome = exitQuizToHome;
-window.startReadRemember = startReadRemember;
-window.exitHistorySelectionMode = exitHistorySelectionMode;
-window.updateDashboard = updateDashboard;
-window.createReferences = createReferences;
-window.openStartTestOptionsPopup = openStartTestOptionsPopup;
-window.addNoteEventListeners = addNoteEventListeners;
-window.getVisualMarkers = getVisualMarkers;
-window.removeQuestion = removeQuestion;
-window.handleRRMouseUp = handleRRMouseUp;
-window.deleteSubject = deleteSubject;
-window.handleKeyDown = handleKeyDown;
-window.populateSmartRevisionSetup = populateSmartRevisionSetup;
-window.saveTestToHistory = saveTestToHistory;
-window.populatePreviouslyUploadedFiles = populatePreviouslyUploadedFiles;
-window.updateSaveButtonUI = updateSaveButtonUI;
-window.loadDataForSubject = loadDataForSubject;
-window.joinTestWithCode = joinTestWithCode;
-window.addUniversalSearchListeners = addUniversalSearchListeners;
-window.createBubble = createBubble;
-window.loadFileFromMemory = loadFileFromMemory;
-window.renderLibraryContent = renderLibraryContent;
-window.deleteSelectedLibraryItems = deleteSelectedLibraryItems;
-window.handleRRMouseDown = handleRRMouseDown;
-window.handleTestReviewClick = handleTestReviewClick;
-window.addNewSubject = addNewSubject;
-window.handleFileUpload = handleFileUpload;
-window.saveCurrentFileToMemory = saveCurrentFileToMemory;
-window.clearAllAppData = clearAllAppData;
-window.toggleHistorySelection = toggleHistorySelection;
-window.draw = draw;
-window.showQuotePopup = showQuotePopup;
-window.updateQuizNavButtons = updateQuizNavButtons;
-window.getFilteredPool = getFilteredPool;
-window.enterHistorySelectionMode = enterHistorySelectionMode;
-window.updateShuffleButtonUI = updateShuffleButtonUI;
-window.createNewHandNote = createNewHandNote;
-window.selectSubject = selectSubject;
-window.populateCustomTestSetup = populateCustomTestSetup;
-window.performUniversalSearch = performUniversalSearch;
-window.addQuestion = addQuestion;
-window.deleteSelectedHistory = deleteSelectedHistory;
-window.setupTheme = setupTheme;
-window.renderReadRememberContent = renderReadRememberContent;
-window.getAttemptedQuestionsSet = getAttemptedQuestionsSet;
-window.deleteFileFromMemory = deleteFileFromMemory;
-window.releaseWakeLock = releaseWakeLock;
-window.setupChatUI = setupChatUI;
-window.adjustFontSize = adjustFontSize;
-window.discardAndStartNew = discardAndStartNew;
-window.renderSearchResultsPage = renderSearchResultsPage;
-window.handleRRContextMenu = handleRRContextMenu;
-window.goToNextQuestion = goToNextQuestion;
-window.handleHistoryContextMenu = handleHistoryContextMenu;
-window.updateAvailableQuestions = updateAvailableQuestions;
-window.triggerConfetti = triggerConfetti;
-window.addLibraryEventListeners = addLibraryEventListeners;
-window.handleTranslateClick = handleTranslateClick;
-window.handleRRLongPressPopup = handleRRLongPressPopup;
-window.showRRLongPressPopup = showRRLongPressPopup;
-window.showSuccess = showSuccess;
-window.loadSubjects = loadSubjects;
-window.initializeControlCenter = initializeControlCenter;
-window.toggleLibrarySelection = toggleLibrarySelection;
-window.renameSubject = renameSubject;
-window.importAllData = importAllData;
-window.performChatRequest = performChatRequest;
-window.handleStartTestClick = handleStartTestClick;
-window.showQuestion = showQuestion;
-window.showQuizSummary = showQuizSummary;
-window.handleCopyClick = handleCopyClick;
-window.exitLibrarySelectionMode = exitLibrarySelectionMode;
-window.resolveReferences = resolveReferences;
-window.startPracticeTestFromRR = startPracticeTestFromRR;
-window.goToNextShuffledQuestion = goToNextShuffledQuestion;
-window.handleSaveQuestionClick = handleSaveQuestionClick;
-window.updateGFabVisibility = updateGFabVisibility;
-window.removeFromAllSources = removeFromAllSources;
-window.getSubjects = getSubjects;
-window.appendMessage = appendMessage;
-window.createTest = createTest;
-window.showSubjectMenu = showSubjectMenu;
-window.handleShareClick = handleShareClick;
-window.setupQuizUI = setupQuizUI;
-window.showViewSheetsPopup = showViewSheetsPopup;
-window.loadSettings = loadSettings;
+if (typeof submitTest !== 'undefined') window.submitTest = submitTest;
+if (typeof saveSubjects !== 'undefined') window.saveSubjects = saveSubjects;
+if (typeof typeWriterEffect !== 'undefined') window.typeWriterEffect = typeWriterEffect;
+if (typeof openUniversalSearch !== 'undefined') window.openUniversalSearch = openUniversalSearch;
+if (typeof loadDataFromStorage !== 'undefined') window.loadDataFromStorage = loadDataFromStorage;
+if (typeof selectAnswer !== 'undefined') window.selectAnswer = selectAnswer;
+if (typeof handleTouchStart !== 'undefined') window.handleTouchStart = handleTouchStart;
+if (typeof exportAllData !== 'undefined') window.exportAllData = exportAllData;
+if (typeof joinPublicTest !== 'undefined') window.joinPublicTest = joinPublicTest;
+if (typeof showFilteredQuestionsPopup !== 'undefined') window.showFilteredQuestionsPopup = showFilteredQuestionsPopup;
+if (typeof handlePauseClick !== 'undefined') window.handlePauseClick = handlePauseClick;
+if (typeof getSmartRevisionQuestions !== 'undefined') window.getSmartRevisionQuestions = getSmartRevisionQuestions;
+if (typeof viewTestDetails !== 'undefined') window.viewTestDetails = viewTestDetails;
+if (typeof editDraftTest !== 'undefined') window.editDraftTest = editDraftTest;
+if (typeof showGenericQuestionDetail !== 'undefined') window.showGenericQuestionDetail = showGenericQuestionDetail;
+if (typeof populateRRSheetFilter !== 'undefined') window.populateRRSheetFilter = populateRRSheetFilter;
+if (typeof handleRRQuestionClick !== 'undefined') window.handleRRQuestionClick = handleRRQuestionClick;
+if (typeof requestWakeLock !== 'undefined') window.requestWakeLock = requestWakeLock;
+if (typeof loadMyTests !== 'undefined') window.loadMyTests = loadMyTests;
+if (typeof startTimers !== 'undefined') window.startTimers = startTimers;
+if (typeof updateSmartRevisionQuestions !== 'undefined') window.updateSmartRevisionQuestions = updateSmartRevisionQuestions;
+if (typeof stopTimers !== 'undefined') window.stopTimers = stopTimers;
+if (typeof loadPublicTests !== 'undefined') window.loadPublicTests = loadPublicTests;
+if (typeof showLibraryPopup !== 'undefined') window.showLibraryPopup = showLibraryPopup;
+if (typeof showNoteEditor !== 'undefined') window.showNoteEditor = showNoteEditor;
+if (typeof setupLongPressForFont !== 'undefined') window.setupLongPressForFont = setupLongPressForFont;
+if (typeof togglePause !== 'undefined') window.togglePause = togglePause;
+if (typeof addSmartRevisionListeners !== 'undefined') window.addSmartRevisionListeners = addSmartRevisionListeners;
+if (typeof manageWrongHistory !== 'undefined') window.manageWrongHistory = manageWrongHistory;
+if (typeof getLevenshteinDistance !== 'undefined') window.getLevenshteinDistance = getLevenshteinDistance;
+if (typeof handleRRFilterChange !== 'undefined') window.handleRRFilterChange = handleRRFilterChange;
+if (typeof renderQuestionsList !== 'undefined') window.renderQuestionsList = renderQuestionsList;
+if (typeof saveQuestionToBank !== 'undefined') window.saveQuestionToBank = saveQuestionToBank;
+if (typeof addQuestionFromBank !== 'undefined') window.addQuestionFromBank = addQuestionFromBank;
+if (typeof toggleShuffle !== 'undefined') window.toggleShuffle = toggleShuffle;
+if (typeof updateNavigator !== 'undefined') window.updateNavigator = updateNavigator;
+if (typeof isFuzzyMatch !== 'undefined') window.isFuzzyMatch = isFuzzyMatch;
+if (typeof enterLibrarySelectionMode !== 'undefined') window.enterLibrarySelectionMode = enterLibrarySelectionMode;
+if (typeof switchToList !== 'undefined') window.switchToList = switchToList;
+if (typeof updateUIAfterDataLoad !== 'undefined') window.updateUIAfterDataLoad = updateUIAfterDataLoad;
+if (typeof handleSelectionMouseUp !== 'undefined') window.handleSelectionMouseUp = handleSelectionMouseUp;
+if (typeof fallbackCopy !== 'undefined') window.fallbackCopy = fallbackCopy;
+if (typeof debounce !== 'undefined') window.debounce = debounce;
+if (typeof startTest !== 'undefined') window.startTest = startTest;
+if (typeof getSavedFiles !== 'undefined') window.getSavedFiles = getSavedFiles;
+if (typeof openCreateTestModal !== 'undefined') window.openCreateTestModal = openCreateTestModal;
+if (typeof initialize !== 'undefined') window.initialize = initialize;
+if (typeof resumeQuiz !== 'undefined') window.resumeQuiz = resumeQuiz;
+if (typeof saveAndLoadFile !== 'undefined') window.saveAndLoadFile = saveAndLoadFile;
+if (typeof applySettingsListeners !== 'undefined') window.applySettingsListeners = applySettingsListeners;
+if (typeof addCustomTestSetupListeners !== 'undefined') window.addCustomTestSetupListeners = addCustomTestSetupListeners;
+if (typeof handleTouchEnd !== 'undefined') window.handleTouchEnd = handleTouchEnd;
+if (typeof setupHoverActions !== 'undefined') window.setupHoverActions = setupHoverActions;
+if (typeof startQuiz !== 'undefined') window.startQuiz = startQuiz;
+if (typeof handleHistoryMouseDown !== 'undefined') window.handleHistoryMouseDown = handleHistoryMouseDown;
+if (typeof updateQuestion !== 'undefined') window.updateQuestion = updateQuestion;
+if (typeof shuffleArray !== 'undefined') window.shuffleArray = shuffleArray;
+if (typeof showTestReview !== 'undefined') window.showTestReview = showTestReview;
+if (typeof handleHistoryItemClick !== 'undefined') window.handleHistoryItemClick = handleHistoryItemClick;
+if (typeof startNormalTestFromRR !== 'undefined') window.startNormalTestFromRR = startNormalTestFromRR;
+if (typeof handleFabVisibility !== 'undefined') window.handleFabVisibility = handleFabVisibility;
+if (typeof showTestHistory !== 'undefined') window.showTestHistory = showTestHistory;
+if (typeof addEventListeners !== 'undefined') window.addEventListeners = addEventListeners;
+if (typeof saveQuizState !== 'undefined') window.saveQuizState = saveQuizState;
+if (typeof markQuestionForReview !== 'undefined') window.markQuestionForReview = markQuestionForReview;
+if (typeof resetQuizState !== 'undefined') window.resetQuizState = resetQuizState;
+if (typeof exitQuizToHome !== 'undefined') window.exitQuizToHome = exitQuizToHome;
+if (typeof startReadRemember !== 'undefined') window.startReadRemember = startReadRemember;
+if (typeof exitHistorySelectionMode !== 'undefined') window.exitHistorySelectionMode = exitHistorySelectionMode;
+if (typeof updateDashboard !== 'undefined') window.updateDashboard = updateDashboard;
+if (typeof createReferences !== 'undefined') window.createReferences = createReferences;
+if (typeof openStartTestOptionsPopup !== 'undefined') window.openStartTestOptionsPopup = openStartTestOptionsPopup;
+if (typeof addNoteEventListeners !== 'undefined') window.addNoteEventListeners = addNoteEventListeners;
+if (typeof getVisualMarkers !== 'undefined') window.getVisualMarkers = getVisualMarkers;
+if (typeof removeQuestion !== 'undefined') window.removeQuestion = removeQuestion;
+if (typeof handleRRMouseUp !== 'undefined') window.handleRRMouseUp = handleRRMouseUp;
+if (typeof deleteSubject !== 'undefined') window.deleteSubject = deleteSubject;
+if (typeof handleKeyDown !== 'undefined') window.handleKeyDown = handleKeyDown;
+if (typeof populateSmartRevisionSetup !== 'undefined') window.populateSmartRevisionSetup = populateSmartRevisionSetup;
+if (typeof saveTestToHistory !== 'undefined') window.saveTestToHistory = saveTestToHistory;
+if (typeof populatePreviouslyUploadedFiles !== 'undefined') window.populatePreviouslyUploadedFiles = populatePreviouslyUploadedFiles;
+if (typeof updateSaveButtonUI !== 'undefined') window.updateSaveButtonUI = updateSaveButtonUI;
+if (typeof loadDataForSubject !== 'undefined') window.loadDataForSubject = loadDataForSubject;
+if (typeof joinTestWithCode !== 'undefined') window.joinTestWithCode = joinTestWithCode;
+if (typeof addUniversalSearchListeners !== 'undefined') window.addUniversalSearchListeners = addUniversalSearchListeners;
+if (typeof createBubble !== 'undefined') window.createBubble = createBubble;
+if (typeof loadFileFromMemory !== 'undefined') window.loadFileFromMemory = loadFileFromMemory;
+if (typeof renderLibraryContent !== 'undefined') window.renderLibraryContent = renderLibraryContent;
+if (typeof deleteSelectedLibraryItems !== 'undefined') window.deleteSelectedLibraryItems = deleteSelectedLibraryItems;
+if (typeof handleRRMouseDown !== 'undefined') window.handleRRMouseDown = handleRRMouseDown;
+if (typeof handleTestReviewClick !== 'undefined') window.handleTestReviewClick = handleTestReviewClick;
+if (typeof addNewSubject !== 'undefined') window.addNewSubject = addNewSubject;
+if (typeof handleFileUpload !== 'undefined') window.handleFileUpload = handleFileUpload;
+if (typeof saveCurrentFileToMemory !== 'undefined') window.saveCurrentFileToMemory = saveCurrentFileToMemory;
+if (typeof clearAllAppData !== 'undefined') window.clearAllAppData = clearAllAppData;
+if (typeof toggleHistorySelection !== 'undefined') window.toggleHistorySelection = toggleHistorySelection;
+if (typeof draw !== 'undefined') window.draw = draw;
+if (typeof showQuotePopup !== 'undefined') window.showQuotePopup = showQuotePopup;
+if (typeof updateQuizNavButtons !== 'undefined') window.updateQuizNavButtons = updateQuizNavButtons;
+if (typeof getFilteredPool !== 'undefined') window.getFilteredPool = getFilteredPool;
+if (typeof enterHistorySelectionMode !== 'undefined') window.enterHistorySelectionMode = enterHistorySelectionMode;
+if (typeof updateShuffleButtonUI !== 'undefined') window.updateShuffleButtonUI = updateShuffleButtonUI;
+if (typeof createNewHandNote !== 'undefined') window.createNewHandNote = createNewHandNote;
+if (typeof selectSubject !== 'undefined') window.selectSubject = selectSubject;
+if (typeof populateCustomTestSetup !== 'undefined') window.populateCustomTestSetup = populateCustomTestSetup;
+if (typeof performUniversalSearch !== 'undefined') window.performUniversalSearch = performUniversalSearch;
+if (typeof addQuestion !== 'undefined') window.addQuestion = addQuestion;
+if (typeof deleteSelectedHistory !== 'undefined') window.deleteSelectedHistory = deleteSelectedHistory;
+if (typeof setupTheme !== 'undefined') window.setupTheme = setupTheme;
+if (typeof renderReadRememberContent !== 'undefined') window.renderReadRememberContent = renderReadRememberContent;
+if (typeof getAttemptedQuestionsSet !== 'undefined') window.getAttemptedQuestionsSet = getAttemptedQuestionsSet;
+if (typeof deleteFileFromMemory !== 'undefined') window.deleteFileFromMemory = deleteFileFromMemory;
+if (typeof releaseWakeLock !== 'undefined') window.releaseWakeLock = releaseWakeLock;
+if (typeof setupChatUI !== 'undefined') window.setupChatUI = setupChatUI;
+if (typeof adjustFontSize !== 'undefined') window.adjustFontSize = adjustFontSize;
+if (typeof discardAndStartNew !== 'undefined') window.discardAndStartNew = discardAndStartNew;
+if (typeof renderSearchResultsPage !== 'undefined') window.renderSearchResultsPage = renderSearchResultsPage;
+if (typeof handleRRContextMenu !== 'undefined') window.handleRRContextMenu = handleRRContextMenu;
+if (typeof goToNextQuestion !== 'undefined') window.goToNextQuestion = goToNextQuestion;
+if (typeof handleHistoryContextMenu !== 'undefined') window.handleHistoryContextMenu = handleHistoryContextMenu;
+if (typeof updateAvailableQuestions !== 'undefined') window.updateAvailableQuestions = updateAvailableQuestions;
+if (typeof triggerConfetti !== 'undefined') window.triggerConfetti = triggerConfetti;
+if (typeof addLibraryEventListeners !== 'undefined') window.addLibraryEventListeners = addLibraryEventListeners;
+if (typeof handleTranslateClick !== 'undefined') window.handleTranslateClick = handleTranslateClick;
+if (typeof handleRRLongPressPopup !== 'undefined') window.handleRRLongPressPopup = handleRRLongPressPopup;
+if (typeof showRRLongPressPopup !== 'undefined') window.showRRLongPressPopup = showRRLongPressPopup;
+if (typeof showSuccess !== 'undefined') window.showSuccess = showSuccess;
+if (typeof loadSubjects !== 'undefined') window.loadSubjects = loadSubjects;
+if (typeof initializeControlCenter !== 'undefined') window.initializeControlCenter = initializeControlCenter;
+if (typeof toggleLibrarySelection !== 'undefined') window.toggleLibrarySelection = toggleLibrarySelection;
+if (typeof renameSubject !== 'undefined') window.renameSubject = renameSubject;
+if (typeof importAllData !== 'undefined') window.importAllData = importAllData;
+if (typeof performChatRequest !== 'undefined') window.performChatRequest = performChatRequest;
+if (typeof handleStartTestClick !== 'undefined') window.handleStartTestClick = handleStartTestClick;
+if (typeof showQuestion !== 'undefined') window.showQuestion = showQuestion;
+if (typeof showQuizSummary !== 'undefined') window.showQuizSummary = showQuizSummary;
+if (typeof handleCopyClick !== 'undefined') window.handleCopyClick = handleCopyClick;
+if (typeof exitLibrarySelectionMode !== 'undefined') window.exitLibrarySelectionMode = exitLibrarySelectionMode;
+if (typeof resolveReferences !== 'undefined') window.resolveReferences = resolveReferences;
+if (typeof startPracticeTestFromRR !== 'undefined') window.startPracticeTestFromRR = startPracticeTestFromRR;
+if (typeof goToNextShuffledQuestion !== 'undefined') window.goToNextShuffledQuestion = goToNextShuffledQuestion;
+if (typeof handleSaveQuestionClick !== 'undefined') window.handleSaveQuestionClick = handleSaveQuestionClick;
+if (typeof updateGFabVisibility !== 'undefined') window.updateGFabVisibility = updateGFabVisibility;
+if (typeof removeFromAllSources !== 'undefined') window.removeFromAllSources = removeFromAllSources;
+if (typeof getSubjects !== 'undefined') window.getSubjects = getSubjects;
+if (typeof appendMessage !== 'undefined') window.appendMessage = appendMessage;
+if (typeof createTest !== 'undefined') window.createTest = createTest;
+if (typeof showSubjectMenu !== 'undefined') window.showSubjectMenu = showSubjectMenu;
+if (typeof handleShareClick !== 'undefined') window.handleShareClick = handleShareClick;
+if (typeof setupQuizUI !== 'undefined') window.setupQuizUI = setupQuizUI;
+if (typeof showViewSheetsPopup !== 'undefined') window.showViewSheetsPopup = showViewSheetsPopup;
+if (typeof loadSettings !== 'undefined') window.loadSettings = loadSettings;

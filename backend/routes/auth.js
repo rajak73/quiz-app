@@ -34,8 +34,6 @@ const otpLimiter = rateLimit({
 // ROUTES
 // ============================================
 router.post('/signup', signupLimiter, authController.signup);
-router.post('/verify-email', authController.verifyEmail);
-router.post('/resend-otp', otpLimiter, authController.resendOTP);
 router.post('/login', loginLimiter, authController.login);
 router.post('/google', googleLogin);
 router.post('/forgot-password', otpLimiter, authController.forgotPassword);

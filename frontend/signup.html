@@ -297,9 +297,9 @@ async function handleSignup(e) {
     try {
         const data = await authApi.signup(name, email, password);
 
-        if (!response.ok) {
+        if (!data.success) {
             // Check specifically for duplicate email
-            if (response.status === 400 && (data.message.includes('registered') || data.message.includes('exists'))) {
+            if (data.message && (data.message.includes('registered') || data.message.includes('exists'))) {
                 showError('emailGroup', 'This email is already in use');
             }
             throw new Error(data.message || 'Signup failed');

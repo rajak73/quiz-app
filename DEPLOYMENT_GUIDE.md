@@ -19,7 +19,7 @@ mongodb+srv://myuser:mypassword@cluster0.xxxxx.mongodb.net/quiz-app?retryWrites=
 
 ```bash
 # Initialize git (if not already done)
-cd /Users/rajakumar/Desktop/quiz-app
+cd /Users/rajakumar/quiz-app
 git init
 
 # Add all files
@@ -48,22 +48,32 @@ git push -u origin main
    - **Runtime**: `Node`
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
-6. Click "Advanced" and add Environment Variables:
+6. Click "Advanced" and add Environment Variables (see `backend/.env.example` for the full list):
    - `MONGODB_URI`: Your MongoDB Atlas connection string
    - `JWT_SECRET`: Any random string (e.g., `my-super-secret-jwt-key-12345`)
    - `FRONTEND_URL`: Leave blank for now (we'll update after frontend deploy)
    - `NODE_ENV`: `production`
+   - `GOOGLE_CLIENT_ID`: Your Google OAuth client ID, if you want Google Sign-In to work
+   - `EMAIL_USER` / `EMAIL_PASS`: A Gmail address + app password, if you want forgot-password
+     emails to actually send (optional — signup/login work fine without this)
 7. Click "Create Web Service"
 8. Wait for deployment to complete
 9. Copy the deployed URL (e.g., `https://quiz-app-backend.onrender.com`)
 
 ## Step 4: Update Frontend API URL
 
-1. Edit `frontend/index.html`
-2. Find the line: `const API_BASE_URL = ...`
-3. Replace `https://quiz-app-backend.onrender.com` with your actual Render URL
-4. Do the same for all other HTML files (login.html, signup.html, etc.)
-5. Commit and push changes:
+The frontend already auto-detects local vs. production in `frontend/js/config.js` (every HTML
+page loads this one file, so you only need to edit it once):
+
+```js
+window.API_BASE_URL = (window.location.hostname === 'localhost')
+    ? 'http://localhost:5001/api'
+    : 'https://quiz-app-backend.onrender.com/api';
+```
+
+1. Edit `frontend/js/config.js`
+2. Replace `https://quiz-app-backend.onrender.com` with your actual Render URL
+3. Commit and push changes:
 ```bash
 git add .
 git commit -m "Update API URL for production"

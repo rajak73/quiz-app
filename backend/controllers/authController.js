@@ -1,6 +1,6 @@
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
-const { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } = require('../utils/sendEmail');
+const sendTokenResponse = require('../utils/sendTokenResponse');
+const { sendPasswordResetEmail } = require('../utils/sendEmail');
 const validator = require('validator');
 const jwt = require('jsonwebtoken');
 
@@ -18,46 +18,15 @@ const isValidEmail = (email) => {
     return validator.isEmail(email);
 };
 
-// Send token response (with cookie)
-const sendTokenResponse = (user, statusCode, res, message) => {
-    const token = generateToken(user._id);
-
-    // Cookie options
-    const options = {
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        httpOnly: true, // Prevent XSS
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: 'strict' // CSRF protection
-    };
-
-    res.status(statusCode)
-        .cookie('token', token, options)
-        .json({
-            success: true,
-            message,
-            token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                avatar: user.avatar,
-                role: user.role,
-                isVerified: user.isVerified
-            }
-        });
-};
-
 // ============================================
 // 1. SIGNUP
 // ============================================
 exports.signup = async (req, res) => {
-    console.log('📝 Signup request received:', req.body);
     try {
         let { name, email, password } = req.body;
 
         // Validation
         if (!name || !email || !password) {
-            console.log('❌ Missing fields');
             return res.status(400).json({
                 success: false,
                 message: 'Please provide name, email, and password'
@@ -67,7 +36,6 @@ exports.signup = async (req, res) => {
         // Sanitize inputs
         name = sanitizeInput(name);
         email = email.toLowerCase().trim();
-        console.log('✅ Sanitized:', { name, email });
 
         // Validate email
         if (!isValidEmail(email)) {
@@ -100,46 +68,22 @@ exports.signup = async (req, res) => {
         }
 
         // Check if user exists
-        console.log('🔍 Checking if user exists...');
         const existingUser = await User.findOne({ email });
-        console.log('✅ User check complete:', existingUser ? 'Found' : 'Not found');
 
         if (existingUser) {
-            if (existingUser.isVerified) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Email already registered. Please login.'
-                });
-            } else {
-                // Auto-verify existing user
-                existingUser.isVerified = true;
-                await existingUser.save();
-
-                return res.status(200).json({
-                    success: true,
-                    message: 'Account verified! Please login.',
-                    email
-                });
-            }
+            return res.status(400).json({
+                success: false,
+                message: 'Email already registered. Please login.'
+            });
         }
 
-        // Create new user
-        const user = await User.create({
+        // Create new user (email verification not implemented yet, so accounts are active immediately)
+        await User.create({
             name,
             email,
-            password
+            password,
+            isVerified: true
         });
-
-        // Generate OTP
-        const otp = user.generateOTP();
-        await user.save();
-
-        // Send verification email (disabled - auto-verify for now)
-        // await sendVerificationEmail(email, name, otp);
-        
-        // Auto-verify user for testing
-        user.isVerified = true;
-        await user.save();
 
         res.status(201).json({
             success: true,
@@ -158,121 +102,7 @@ exports.signup = async (req, res) => {
 };
 
 // ============================================
-// 2. VERIFY EMAIL
-// ============================================
-exports.verifyEmail = async (req, res) => {
-    try {
-        let { email, otp } = req.body;
-
-        if (!email || !otp) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and OTP are required'
-            });
-        }
-
-        email = email.toLowerCase().trim();
-        otp = otp.trim();
-
-        // Find user with OTP
-        const user = await User.findOne({ email }).select('+otp +otpExpiry');
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        if (user.isVerified) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email already verified. Please login.'
-            });
-        }
-
-        // Verify OTP
-        if (!user.verifyOTP(otp)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid or expired verification code'
-            });
-        }
-
-        // Update user
-        user.isVerified = true;
-        user.clearOTP();
-        await user.save();
-
-        // Send welcome email
-        await sendWelcomeEmail(email, user.name);
-
-        // Send token response
-        sendTokenResponse(user, 200, res, 'Email verified successfully!');
-
-    } catch (error) {
-        console.error('Verify email error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error. Please try again.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-// ============================================
-// 3. RESEND OTP
-// ============================================
-exports.resendOTP = async (req, res) => {
-    try {
-        let { email } = req.body;
-
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email is required'
-            });
-        }
-
-        email = email.toLowerCase().trim();
-
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        if (user.isVerified) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email already verified'
-            });
-        }
-
-        // Auto-verify user
-        user.isVerified = true;
-        await user.save();
-
-        res.status(200).json({
-            success: true,
-            message: 'Account verified! Please login.'
-        });
-
-    } catch (error) {
-        console.error('Resend OTP error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error. Please try again.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-// ============================================
-// 4. LOGIN
+// 2. LOGIN
 // ============================================
 exports.login = async (req, res) => {
     try {
@@ -311,13 +141,6 @@ exports.login = async (req, res) => {
                 success: false,
                 message: 'Your account has been deactivated. Contact support.'
             });
-        }
-
-        // Check if verified
-        if (!user.isVerified) {
-            // Auto-verify user
-            user.isVerified = true;
-            await user.save();
         }
 
         // Check password

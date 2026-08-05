@@ -1,4 +1,14 @@
 const Test = require('../models/Test');
+const validator = require('validator');
+
+// If an active test's time is up, flip it to completed so stale tests
+// can't keep accepting answers or show as "active" forever.
+async function autoExpireIfNeeded(test) {
+    if (test.status === 'active' && test.endTime && test.endTime <= new Date()) {
+        test.endTest();
+        await test.save();
+    }
+}
 
 // Create a new test
 exports.createTest = async (req, res) => {
@@ -13,7 +23,6 @@ exports.createTest = async (req, res) => {
             });
         }
         
-        const validator = require('validator');
         title = validator.escape(validator.trim(title));
         if (description) description = validator.escape(validator.trim(description));
         subject = validator.escape(validator.trim(subject));
@@ -84,18 +93,33 @@ exports.createTest = async (req, res) => {
     }
 };
 
+// Read page/limit query params into safe, bounded numbers
+function getPagination(req, defaultLimit = 20, maxLimit = 100) {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(maxLimit, Math.max(1, parseInt(req.query.limit, 10) || defaultLimit));
+    return { page, limit, skip: (page - 1) * limit };
+}
+
 // Get all public tests
 exports.getPublicTests = async (req, res) => {
     try {
-        const tests = await Test.find({ 
-            type: 'public', 
+        const { page, limit, skip } = getPagination(req);
+        const filter = {
+            type: 'public',
             isActive: true,
             status: { $in: ['waiting', 'active'] }
-        })
-        .populate('creator', 'name')
-        .select('-questions.correctAnswer -secretCode')
-        .sort({ createdAt: -1 });
-        
+        };
+
+        const [tests, total] = await Promise.all([
+            Test.find(filter)
+                .populate('creator', 'name')
+                .select('-questions.correctAnswer -secretCode')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Test.countDocuments(filter)
+        ]);
+
         res.json({
             success: true,
             tests: tests.map(test => ({
@@ -108,9 +132,10 @@ exports.getPublicTests = async (req, res) => {
                 duration: test.duration,
                 subject: test.subject,
                 createdAt: test.createdAt
-            }))
+            })),
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
-        
+
     } catch (error) {
         console.error('Get public tests error:', error);
         res.status(500).json({
@@ -123,10 +148,18 @@ exports.getPublicTests = async (req, res) => {
 // Get tests created by user
 exports.getMyTests = async (req, res) => {
     try {
-        const tests = await Test.find({ creator: req.user._id })
-            .select('-questions.correctAnswer')
-            .sort({ createdAt: -1 });
-        
+        const { page, limit, skip } = getPagination(req);
+        const filter = { creator: req.user._id };
+
+        const [tests, total] = await Promise.all([
+            Test.find(filter)
+                .select('-questions.correctAnswer')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Test.countDocuments(filter)
+        ]);
+
         res.json({
             success: true,
             tests: tests.map(test => ({
@@ -140,9 +173,10 @@ exports.getMyTests = async (req, res) => {
                 duration: test.duration,
                 subject: test.subject,
                 createdAt: test.createdAt
-            }))
+            })),
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
-        
+
     } catch (error) {
         console.error('Get my tests error:', error);
         res.status(500).json({
@@ -155,14 +189,22 @@ exports.getMyTests = async (req, res) => {
 // Get tests joined by user
 exports.getJoinedTests = async (req, res) => {
     try {
-        const tests = await Test.find({
+        const { page, limit, skip } = getPagination(req);
+        const filter = {
             'participants.user': req.user._id,
             creator: { $ne: req.user._id }
-        })
-        .populate('creator', 'name')
-        .select('-questions.correctAnswer -secretCode')
-        .sort({ createdAt: -1 });
-        
+        };
+
+        const [tests, total] = await Promise.all([
+            Test.find(filter)
+                .populate('creator', 'name')
+                .select('-questions.correctAnswer -secretCode')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Test.countDocuments(filter)
+        ]);
+
         res.json({
             success: true,
             tests: tests.map(test => ({
@@ -174,9 +216,10 @@ exports.getJoinedTests = async (req, res) => {
                 status: test.status,
                 myScore: test.getParticipant(req.user._id)?.score || 0,
                 createdAt: test.createdAt
-            }))
+            })),
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
-        
+
     } catch (error) {
         console.error('Get joined tests error:', error);
         res.status(500).json({
@@ -199,7 +242,9 @@ exports.getTest = async (req, res) => {
                 message: 'Test not found'
             });
         }
-        
+
+        await autoExpireIfNeeded(test);
+
         const isCreator = test.creator._id.toString() === req.user._id.toString();
         const isParticipant = test.isParticipant(req.user._id);
         
@@ -318,6 +363,43 @@ exports.joinTest = async (req, res) => {
     }
 };
 
+// Find a groupwise test by its secret code (used by the "Join a Test" code box)
+exports.findTestByCode = async (req, res) => {
+    try {
+        let { code } = req.body;
+
+        if (!code || typeof code !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Secret code is required'
+            });
+        }
+
+        code = code.trim().toUpperCase();
+
+        const test = await Test.findOne({ secretCode: code, type: 'groupwise' }).select('+secretCode');
+
+        if (!test) {
+            return res.status(404).json({
+                success: false,
+                message: 'No test found with that code'
+            });
+        }
+
+        res.json({
+            success: true,
+            testId: test._id
+        });
+
+    } catch (error) {
+        console.error('Find test by code error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to look up test'
+        });
+    }
+};
+
 // Start a test
 exports.startTest = async (req, res) => {
     try {
@@ -385,15 +467,26 @@ exports.submitAnswer = async (req, res) => {
                 message: 'Not a participant of this test'
             });
         }
-        
+
+        await autoExpireIfNeeded(test);
+
         // Check if test is active
         if (test.status !== 'active') {
             return res.status(400).json({
                 success: false,
-                message: 'Test is not active'
+                message: test.status === 'completed' ? 'Test has ended' : 'Test is not active'
             });
         }
-        
+
+        // Prevent re-submission from overwriting an already-scored attempt
+        const participant = test.getParticipant(req.user._id);
+        if (participant && participant.status === 'completed') {
+            return res.status(400).json({
+                success: false,
+                message: 'You have already submitted this test'
+            });
+        }
+
         // Calculate score
         let score = 0;
         const processedAnswers = answers.map((answer, index) => {
@@ -457,12 +550,13 @@ exports.getResults = async (req, res) => {
             .sort((a, b) => b.score - a.score)
             .map((p, index) => ({
                 rank: index + 1,
+                userId: p.user._id,
                 name: p.user.name,
                 score: p.score,
                 totalQuestions: test.questions.length,
                 completedAt: p.completedAt
             }));
-        
+
         res.json({
             success: true,
             results: {
@@ -470,7 +564,7 @@ exports.getResults = async (req, res) => {
                 totalQuestions: test.questions.length,
                 participants: sortedParticipants,
                 myRank: sortedParticipants.findIndex(
-                    p => p.name === test.getParticipant(req.user._id)?.user?.name
+                    p => p.userId.toString() === req.user._id.toString()
                 ) + 1
             }
         });
@@ -520,6 +614,77 @@ exports.endTest = async (req, res) => {
     }
 };
 
+// Get creator analytics (average score, participation, per-question accuracy)
+exports.getTestAnalytics = async (req, res) => {
+    try {
+        const test = await Test.findById(req.params.id);
+
+        if (!test) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test not found'
+            });
+        }
+
+        if (test.creator.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only the creator can view analytics'
+            });
+        }
+
+        const completedParticipants = test.participants.filter(p => p.status === 'completed');
+        const totalQuestions = test.questions.length;
+
+        const averageScore = completedParticipants.length
+            ? completedParticipants.reduce((sum, p) => sum + p.score, 0) / completedParticipants.length
+            : 0;
+
+        const perQuestion = test.questions.map((q, index) => {
+            let correct = 0;
+            let attempted = 0;
+            completedParticipants.forEach(p => {
+                const answer = p.answers.find(a => a.questionIndex === index);
+                if (answer) {
+                    attempted++;
+                    if (answer.isCorrect) correct++;
+                }
+            });
+            return {
+                questionIndex: index,
+                question: q.question,
+                correctCount: correct,
+                attemptedCount: attempted,
+                correctPercent: attempted ? Math.round((correct / attempted) * 100) : 0
+            };
+        });
+
+        const hardestQuestion = perQuestion.length
+            ? perQuestion.reduce((hardest, q) => (q.correctPercent < hardest.correctPercent ? q : hardest), perQuestion[0])
+            : null;
+
+        res.json({
+            success: true,
+            analytics: {
+                title: test.title,
+                totalParticipants: test.participants.length,
+                completedCount: completedParticipants.length,
+                totalQuestions,
+                averageScore: Math.round(averageScore * 10) / 10,
+                perQuestion,
+                hardestQuestion
+            }
+        });
+
+    } catch (error) {
+        console.error('Get test analytics error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch analytics'
+        });
+    }
+};
+
 // Update a test (creator only)
 exports.updateTest = async (req, res) => {
     try {
@@ -549,7 +714,6 @@ exports.updateTest = async (req, res) => {
         
         let { title, description, maxParticipants, duration, subject } = req.body;
         
-        const validator = require('validator');
         if (title) test.title = validator.escape(validator.trim(title));
         if (description) test.description = validator.escape(validator.trim(description));
         if (subject) test.subject = validator.escape(validator.trim(subject));
@@ -703,7 +867,6 @@ exports.saveDraft = async (req, res) => {
         const { id } = req.params;
         let { title, description, type, maxParticipants, questions, duration, subject } = req.body;
         
-        const validator = require('validator');
         if (title) title = validator.escape(validator.trim(title));
         if (description) description = validator.escape(validator.trim(description));
         if (subject) subject = validator.escape(validator.trim(subject));
@@ -776,7 +939,6 @@ exports.finalizeTest = async (req, res) => {
             return res.status(400).json({ success: false, message: 'At least one question is required' });
         }
         
-        const validator = require('validator');
         test.title = validator.escape(validator.trim(title));
         if (description) test.description = validator.escape(validator.trim(description));
         test.subject = validator.escape(validator.trim(subject));

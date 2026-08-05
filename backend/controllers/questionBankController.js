@@ -43,16 +43,24 @@ exports.getBankQuestions = async (req, res) => {
     try {
         const { subject } = req.query;
         let query = { creator: req.user._id };
-        
+
         if (subject) {
             query.subject = validator.escape(validator.trim(subject));
         }
-        
-        const questions = await QuestionBank.find(query).sort({ createdAt: -1 });
-        
+
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+        const skip = (page - 1) * limit;
+
+        const [questions, total] = await Promise.all([
+            QuestionBank.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            QuestionBank.countDocuments(query)
+        ]);
+
         res.json({
             success: true,
-            questions
+            questions,
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
     } catch (error) {
         console.error('Get bank questions error:', error);

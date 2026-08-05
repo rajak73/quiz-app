@@ -192,16 +192,7 @@ async function handleLogin(e) {
     try {
         const data = await authApi.login(email, password);
 
-        if (!response.ok) {
-            // ✅ Handle unverified users using the backend flag
-            if (data.requiresVerification) {
-                showToast(data.message, 'error');
-                sessionStorage.setItem('pendingVerification', email);
-                setTimeout(() => {
-                    window.location.href = 'verify-email.html';
-                }, 2000);
-                return;
-            }
+        if (!data.success) {
             throw new Error(data.message || 'Login failed');
         }
 

@@ -18,6 +18,9 @@ router.get('/my', testController.getMyTests);
 // Get tests I joined
 router.get('/joined', testController.getJoinedTests);
 
+// Find a groupwise test by its secret code
+router.post('/find-by-code', testController.findTestByCode);
+
 // Get single test
 router.get('/:id', testController.getTest);
 
@@ -32,6 +35,9 @@ router.post('/:id/submit', testController.submitAnswer);
 
 // Get test results
 router.get('/:id/results', testController.getResults);
+
+// Get creator analytics for a test
+router.get('/:id/analytics', testController.getTestAnalytics);
 
 // End a test
 router.post('/:id/end', testController.endTest);

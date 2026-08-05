@@ -22,7 +22,7 @@
  function selectSubject(subjectName) {
             activeSubject = subjectName; localStorage.setItem('activeSubject', subjectName);
             document.querySelectorAll('.subject-btn').forEach(btn => { btn.classList.toggle('active', btn.dataset.subject === subjectName); });
-            document.getElementById('main-content-area').classList.remove('hidden'); loadDataForSubject(subjectName);
+            document.getElementById('study-content-area').classList.remove('hidden'); loadDataForSubject(subjectName);
         }
 
  function addNewSubject() {
@@ -38,7 +38,7 @@
                 let subjects = getSubjects(); const newSubjects = subjects.filter(s => s !== subjectName); saveSubjects(newSubjects);
                 const allStorageKeys = Object.keys(localStorage);
                 allStorageKeys.forEach(key => { if (key.endsWith(`_${subjectName}`)) { localStorage.removeItem(key); } });
-                if (activeSubject === subjectName) { activeSubject = null; localStorage.removeItem('activeSubject'); document.getElementById('main-content-area').classList.add('hidden'); }
+                if (activeSubject === subjectName) { activeSubject = null; localStorage.removeItem('activeSubject'); document.getElementById('study-content-area').classList.add('hidden'); }
                 loadSubjects();
             }
         }
@@ -334,7 +334,8 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const nameForFile = (typeof userName !== 'undefined' && userName) ? userName : 'Quiz';
+            const currentUserName = window.getUserName ? window.getUserName() : '';
+            const nameForFile = currentUserName || 'Quiz';
             a.download = `${nameForFile}Quiz_Backup_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
             a.click();
