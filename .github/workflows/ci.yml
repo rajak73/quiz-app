@@ -31,3 +31,9 @@ jobs:
       run: npm test
       env:
         NODE_ENV: test
+        # Tests connect to an in-memory MongoDB via mongodb-memory-server (see
+        # backend/tests/setup/db.js) — server.js's real connectDB() never runs under
+        # Jest, so MONGODB_URI just needs to be non-empty to pass its startup check.
+        MONGODB_URI: mongodb://127.0.0.1:27017/quiz-app-ci-placeholder
+        JWT_SECRET: ci-test-only-jwt-secret
+        FRONTEND_URL: http://localhost:5500
